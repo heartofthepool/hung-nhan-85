@@ -28,7 +28,8 @@ input,select,textarea{font:inherit;color:inherit}
 .start{align-items:center;justify-content:center;padding:24px;text-align:center;background:radial-gradient(ellipse at 50% 0,#222b38 0,var(--bg) 70%);overflow:auto}
 .logo-card{width:230px;height:230px;border-radius:44px;background:var(--cream);display:flex;align-items:center;justify-content:center;margin:0 auto 26px;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);animation:rise .9s cubic-bezier(.2,.8,.2,1) both}
 .logo-card svg{width:196px;height:196px;overflow:visible}
-.tiles{display:flex;flex-direction:column;gap:12px;width:440px;max-width:100%;animation:rise .9s .15s cubic-bezier(.2,.8,.2,1) both}
+.tiles{display:flex;flex-direction:column;width:440px;max-width:100%;animation:rise .9s .15s cubic-bezier(.2,.8,.2,1) both}
+.tiles>*+*{margin-top:12px}
 .tile{display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:20px;border:0;text-align:left;background:var(--org);color:#2a1a05;box-shadow:0 4px 0 #9a5a10;transition:transform .12s}
 .tile:active{transform:translateY(3px);box-shadow:0 1px 0 #9a5a10}
 .tile b{font-family:"Oswald","Arial Narrow",sans-serif;font-weight:600;font-size:30px;min-width:64px}
@@ -40,7 +41,7 @@ input,select,textarea{font:inherit;color:inherit}
 .syncchip{font-size:13px;font-weight:700;padding:6px 11px;border-radius:99px}
 .syncchip.ok{background:#173a26;color:#6ee7a1}
 .syncchip.off{background:#4a3410;color:#ffcf7a}
-.tapstart{position:fixed;inset:0;z-index:70;background:rgba(8,10,14,.86);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#fff;text-align:center;cursor:pointer}
+.tapstart{position:fixed;top:0;right:0;bottom:0;left:0;z-index:70;background:rgba(8,10,14,.86);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#fff;text-align:center;cursor:pointer}
 .tapstart b{font-size:34px}
 .tapstart span{color:#aab3c2;font-size:17px}
 @keyframes rise{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
@@ -147,14 +148,14 @@ input,select,textarea{font:inherit;color:inherit}
 .ptt small{display:block;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;font-weight:600;letter-spacing:0;opacity:.75;text-transform:none}
 .ptt.hold{transform:translateY(4px);box-shadow:0 1px 0 #9a5a10;filter:brightness(1.08)}
 
-.overlay{position:fixed;inset:0;background:rgba(8,10,14,.82);display:flex;align-items:center;justify-content:center;z-index:50;color:#fff;text-align:center;padding:20px}
+.overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(8,10,14,.82);display:flex;align-items:center;justify-content:center;z-index:50;color:#fff;text-align:center;padding:20px}
 .overlay .big{font-size:30px;font-weight:800}
 .overlay .livetxt{margin-top:14px;font-size:26px;min-height:34px;color:#ffd27a}
 .overlay .wave{width:120px;height:120px;border-radius:50%;background:var(--org);margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:52px;animation:breathe 1s infinite alternate;box-shadow:0 0 0 14px rgba(234,160,63,.18)}
 @keyframes breathe{from{transform:scale(.92)}to{transform:scale(1.06)}}
 
 /* ---------- modal & toast (giữ nền sáng cho dễ đọc) ---------- */
-.modal-bg{position:fixed;inset:0;background:rgba(5,7,10,.65);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
+.modal-bg{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(5,7,10,.65);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
 .modal{background:#fff;color:#1c2330;border-radius:18px;max-width:640px;width:100%;max-height:88vh;overflow:auto;padding:20px 22px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .modal h3{margin:0 0 12px;font-size:21px}
 .modal p{color:#444;line-height:1.45}
@@ -487,10 +488,12 @@ var FB={on:!!FIREBASE_CONFIG,ready:false,db:null,auth:null,synced:{},cfgJSON:nul
     var t=setTimeout(function(){ if(!self.ready){ toast('Chưa kết nối được dữ liệu chung — tạm dùng dữ liệu trên máy','err'); afterReady(); } },9000);
     this.loadSDK(function(ok){
       if(!ok){ clearTimeout(t); toast('Không tải được Firebase (mất mạng?) — tạm dùng dữ liệu trên máy','err'); afterReady(); return; }
-      try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){}
-      self.db=firebase.firestore();
-      try{ self.db.enablePersistence({synchronizeTabs:true}).catch(function(){}); }catch(e){}
-      self.auth=firebase.auth();
+      try{
+        try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){}
+        self.db=firebase.firestore();
+        try{ self.db.enablePersistence({synchronizeTabs:true}).catch(function(){}); }catch(e){}
+        self.auth=firebase.auth();
+      }catch(err){ clearTimeout(t); toast('Trình duyệt này không chạy được Firebase — tạm dùng dữ liệu trên máy','err'); afterReady(); return; }
       self.auth.onAuthStateChanged(function(u){
         if(u){ self.start(function(){ clearTimeout(t); afterReady(); }); }
         else { clearTimeout(t); self.stop(); fbScreen('login'); }
@@ -1050,7 +1053,7 @@ var V={rec:null,running:false,wantWake:false,ptt:null,base:0,len:0,lastFinal:tru
 function micUI(){
   var c=$('#micchip'), tx=$('#micText'); if(!c) return;
   c.className='micchip';
-  if(!V.ok){ c.classList.add('warn'); tx.textContent='Trình duyệt không hỗ trợ giọng nói · dùng ô gõ'; return; }
+  if(!V.ok){ c.classList.add('warn'); tx.textContent='Máy này không nghe được giọng nói (cần iPadOS 14.5+)'; return; }
   if(V.blocked){ c.classList.add('warn'); tx.textContent='Micro bị chặn · bấm để thử lại'; return; }
   if(V.wantWake){ c.classList.add('live'); tx.innerHTML='Đang nghe · gọi '+wakeShow().map(function(w){return '“'+esc(w)+'”';}).join(' / '); }
   else tx.textContent='Mic tắt · bấm để bật';
@@ -1145,7 +1148,9 @@ function renderRight(R){
 function toActive(smooth){
   var L=$('#colR'), a=$('#rActive'); if(!a) return;
   rS.prog=true;
-  try{ L.scrollTo({top:a.offsetTop,behavior:smooth?'smooth':'auto'}); }catch(e){ L.scrollTop=a.offsetTop; }
+  var to=a.offsetTop;
+  if(!smooth){ L.scrollTop=to; }
+  else { var from=L.scrollTop, t0=Date.now(); (function step(){ var k=Math.min(1,(Date.now()-t0)/500), e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2; L.scrollTop=from+(to-from)*e; if(k<1) requestAnimationFrame(step); })(); }
   clearTimeout(rS.pt); rS.pt=setTimeout(function(){ rS.prog=false; },smooth?900:80);
 }
 function rTouch(){
@@ -1190,7 +1195,8 @@ function hiddenDialog(){
 /* ---- hold gestures ---- */
 var hold=null;
 function overlay(on,title){ $('#overlay').classList.toggle('hide',!on); if(title) $('#ovTitle').textContent=title; $('#ovLive').textContent=''; }
-document.addEventListener('pointerdown',function(e){
+function holdStart(e){
+  if(hold) return;
   var pen=e.target.closest('[data-pen]'), ptt=e.target.closest('#ptt');
   if(!pen && !ptt) return;
   e.preventDefault(); ac();
@@ -1204,15 +1210,17 @@ document.addEventListener('pointerdown',function(e){
     overlay(true, h.id ? 'Sửa đơn: '+(o?o.lines.map(lineText).join(', '):'')+' — nói lệnh…' : 'Đang nghe đơn mới…');
     V.pttStart(function(cands){ overlay(false); if(h.id) editByText(h.id,cands); else if(cands && cands.length) handleUtterance(cands,'ptt'); else feedback('(không nghe thấy gì)',NO('Không nghe thấy gì')); });
   },220);
-});
+}
 function endHold(){
   if(!hold) return; var h=hold; hold=null; clearTimeout(h.timer); h.el.classList.remove('hold');
   if(h.voice){ V.pttEnd(); return; }
-  if(!V.ok) toast('Trình duyệt này không có nhận diện giọng nói — hãy mở bằng Safari (iPad) hoặc Chrome','err');
+  if(!V.ok) toast('Máy này không nghe được giọng nói: cần iPad chạy iPadOS 14.5 trở lên','err');
   else if(V.blocked) toast('Micro đang bị chặn — cho phép micro rồi bấm nút Mic ở trên','err');
   else toast(h.id?'Giữ nút Sửa rồi nói, thả tay ra là xong':'Giữ nút rồi nói, thả tay ra là chốt đơn');
 }
-document.addEventListener('pointerup',endHold); document.addEventListener('pointercancel',endHold);
+if(window.PointerEvent){ document.addEventListener('pointerdown',holdStart); document.addEventListener('pointerup',endHold); document.addEventListener('pointercancel',endHold); }
+else { document.addEventListener('touchstart',holdStart,{passive:false}); document.addEventListener('touchend',endHold); document.addEventListener('touchcancel',endHold);
+       document.addEventListener('mousedown',holdStart); document.addEventListener('mouseup',endHold); }
 document.addEventListener('contextmenu',function(e){ if(e.target.closest('[data-pen],#ptt')) e.preventDefault(); });
 /* =====================================================================
    ADMIN UI
