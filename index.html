@@ -129,6 +129,13 @@ body.phone .todaybtn{display:inline-block}
 .card.tk{background:var(--cardTk)}
 .card.addon{box-shadow:inset 0 0 0 3px var(--org),0 2px 0 rgba(0,0,0,.25)}
 .cols.locked .btn-ok,.cols.locked .btn-pen{filter:saturate(.3) brightness(.8);pointer-events:none}
+.card.mini{min-height:58px!important}
+.card.mini .cbody{padding:6px 10px 6px 14px!important;gap:2px!important}
+.card.mini .sitems{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:17px;font-weight:600;line-height:1.3}
+.card.mini .si b{font-weight:800}
+.card.mini .ptag{font-size:17px;margin:0}
+.col.done .card.mini .btn-pen,.col.done .card.mini .btn-ok{width:58px;font-size:17px}
+@media (max-width:760px){ .card.mini{min-height:48px!important} .card.mini .sitems{font-size:15px} .card.mini .ptag{font-size:15px} }
 .card.group{min-height:38px;background:#efe7ff;color:#3b1d77;box-shadow:inset 0 0 0 2px #8b5cf6,0 2px 0 rgba(0,0,0,.25)}
 .card.group .cbody{flex-direction:row;align-items:center;gap:10px;padding:4px 12px;white-space:nowrap;overflow:hidden}
 .card.group .gtag{flex:none;background:#7c3aed;color:#fff;font-weight:900;font-size:13px;letter-spacing:.4px;padding:3px 9px;border-radius:7px}
@@ -1162,7 +1169,7 @@ function createOrder(raw,a,extra){
   var res2=commit(function(){ o={id:uid(),num:nextNum(),createdAt:Date.now(),status:'pending',takeaway:a.r.take,lines:a.r.items,demo:!!S.settings.demo,branchId:S.deviceBranch};
     if(a.time) o.time=a.time; if(extra) for(var k in extra) o[k]=extra[k];
     if(o.people===undefined) delete o.people;
-    S.orders.push(o); return OK((o.group?'Đoàn nhiều người'+(o.people?' · '+o.people+' người':'')+(o.lines.length?': ':''):'Lên đơn: ')+o.lines.map(lineText).join(', ')+(o.takeaway?' · MANG ĐI':'')+(o.time?' · '+o.time:'')); });
+    S.orders.push(o); return OK((o.group?(o.people?'Đoàn '+o.people+' người':'Đoàn nhiều người')+(o.lines.length?': ':''):'Lên đơn: ')+o.lines.map(lineText).join(', ')+(o.takeaway?' · MANG ĐI':'')+(o.time?' · '+o.time:'')); });
   feedback(raw,res2); renderSales();
 }
 function confirmBig(raw,a,nb){
@@ -1475,12 +1482,21 @@ function visible(all){ return S.orders.filter(function(o){ return !o.deletedAt &
 var seenCards={};
 function groupHTML(o,isNew){
   var nb=bowlCount(o.lines), parts=[], sum=o.lines.map(function(l){ return l.qty+' '+(l.kind==='drink'?drinkLabel(l):shortName(l)+(l.kind==='bowl'&&l.noodle==='bánh đa'?' (bánh đa)':'')); }).join(', ');
-  return '<div class="card group'+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><span class="gtag">ĐOÀN NHIỀU NGƯỜI</span>'+(o.time?'<span class="gtime">'+esc(o.time)+'</span>':'')+'<span class="gsum">'+(function(){ if(o.people) parts.push(o.people+' người'); if(nb) parts.push(nb+' bát'); var x=esc(parts.join(' · ')); if(sum) x+=(x?' · ':'')+esc(sum); if(o.status==='served' && o.lines.length) x+=' · <b>'+money(orderTotal(o))+'</b>'; return x||'Chưa có món — bấm giữ Sửa để thêm'; })()+'</span></div>'+
+  return '<div class="card group'+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><span class="gtag">'+(o.people?'ĐOÀN '+o.people+' NGƯỜI':'ĐOÀN NHIỀU NGƯỜI')+'</span>'+(o.time?'<span class="gtime">'+esc(o.time)+'</span>':'')+'<span class="gsum">'+(function(){ if(nb) parts.push(nb+' bát'); var x=esc(parts.join(' · ')); if(sum) x+=(x?' · ':'')+esc(sum); if(o.status==='served' && o.lines.length) x+=' · <b>'+money(orderTotal(o))+'</b>'; return x||(o.status==='pending'?'Chưa có món — giữ Sửa để thêm':''); })()+'</span></div>'+
+    '<button class="btn-pen" data-pen="'+o.id+'">Sửa</button><button class="btn-ok" data-ok="'+o.id+'">Xong</button></div>';
+}
+/* Cột ĐANG ĂN: thẻ gọn — chỉ loại món, số lượng, thành tiền (không bún/bánh đa, không ghi chú) */
+function servedHTML(o,isNew){
+  var agg={}, order=[];
+  o.lines.forEach(function(l){ var k=l.kind==='drink'?drinkLabel(l):(l.kind==='bowl'?shortName(l):l.name); if(!(k in agg)){ agg[k]=0; order.push(k); } agg[k]+=l.qty; });
+  var items=order.map(function(k){ return '<span class="si"><b>'+agg[k]+'</b> '+esc(k)+'</span>'; }).join('');
+  return '<div class="card mini '+(o.takeaway?'tk':'di')+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><div class="sitems">'+items+'</div><div class="ptag">'+money(orderTotal(o))+'</div></div>'+
     '<button class="btn-pen" data-pen="'+o.id+'">Sửa</button><button class="btn-ok" data-ok="'+o.id+'">Xong</button></div>';
 }
 function cardHTML(o){
   var isNew=!seenCards[o.id+o.status]; seenCards[o.id+o.status]=1;
   if(o.group) return groupHTML(o,isNew);
+  if(o.status==='served') return servedHTML(o,isNew);
   if(o.addon){ var par=S.orders.filter(function(x){return x.id===o.parentId;})[0]; if(par) o.takeaway=par.takeaway; }
   var bd=(o.takeaway?'<span class="bdg">MANG ĐI</span>':'')+(o.addon?'<span class="bdg ad">GỌI THÊM</span>':'');
   return '<div class="card '+(o.takeaway?'tk':'di')+(o.addon?' addon':'')+(isNew?' new':'')+'" data-id="'+o.id+'">'+
