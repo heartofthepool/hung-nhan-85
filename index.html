@@ -83,6 +83,8 @@ input,select,textarea{font:inherit;color:inherit}
 .brand.salesaddr{font-size:19px;min-width:0;background:#1d2531;border:1px solid #2c3646;border-radius:12px;padding:6px 12px}
 .brand.salesaddr #salesBr{color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand.salesaddr .pin{font-size:18px}
+.brand.salesaddr{color:#fff;cursor:pointer;text-align:left;font-family:inherit}
+.brand.salesaddr .car{color:var(--org);font-size:14px;margin-left:2px}
 .micchip{display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:99px;padding:7px 14px;font-size:15px;cursor:pointer}
 .micchip .dot{width:11px;height:11px;border-radius:50%;background:#6b7587}
 .micchip.live .dot{background:#3ddc84;animation:pulse 1.6s infinite}
@@ -314,7 +316,7 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
 <div id="sales" class="screen">
   <header class="top">
     <button class="hbtn" data-act="salesHome" title="Về màn hình chính (cần mật khẩu)">⌂</button>
-    <div class="brand salesaddr"><span class="pin">📍</span><span id="salesBr"></span></div>
+    <button class="brand salesaddr" data-act="pickSalesBranch" title="Đổi cơ sở"><span class="pin">📍</span><span id="salesBr"></span><span class="car">▾</span></button>
     <div id="micchip" class="micchip" data-act="toggleMic"><i class="dot"></i><span id="micText">Mic tắt</span></div>
     <div id="syncChip" class="syncchip hide"></div>
     <div id="banners" style="display:flex;gap:6px"></div>
@@ -1021,7 +1023,7 @@ function findTarget(toks){
   return null;
 }
 function findOrderByNum(n){
-  var vis=S.orders.filter(function(o){ return !o.deletedAt && o.num===n && (o.status==='pending'||o.status==='served'); });
+  var vis=S.orders.filter(function(o){ return !o.deletedAt && o.num===n && brOf(o)===S.deviceBranch && (o.status==='pending'||o.status==='served'); });
   vis.sort(function(a,b){ return (a.addon?1:0)-(b.addon?1:0) || b.createdAt-a.createdAt; });
   return vis[0];
 }
@@ -1363,7 +1365,7 @@ function changePwDialog(forced){
    SALES UI
    ===================================================================== */
 var undoStack=[];
-function visible(){ return S.orders.filter(function(o){ return !o.deletedAt && (o.status==='pending'||o.status==='served'); }); }
+function visible(all){ return S.orders.filter(function(o){ return !o.deletedAt && (o.status==='pending'||o.status==='served') && (all || brOf(o)===S.deviceBranch); }); }
 var seenCards={};
 function cardHTML(o){
   var isNew=!seenCards[o.id+o.status]; seenCards[o.id+o.status]=1;
@@ -1427,7 +1429,7 @@ function renderSales(){
   $('#colL').innerHTML=L.length?L.map(cardHTML).join(''):'';
   renderRight(R);
   $('#cntL').textContent=L.length; $('#cntR').textContent=R.length;
-  var moved=animateCards(before);
+  var moved=cause==='switch'?false:animateCards(before);
   if(moved && cause==='remote') setLock(1000);   // máy khác vừa làm đơn di chuyển → khóa bấm 1 giây tránh bấm nhầm
   var sp=specialOn(Date.now()), bn='';
   if(sp) bn+='<span class="banner sp">Đang áp dụng giá lễ/Tết: '+esc(sp.name)+'</span>';
@@ -1444,7 +1446,7 @@ function pastHTML(o){
 }
 function renderRight(R){
   var L=$('#colR'), today=ymd(Date.now());
-  var past=S.orders.filter(function(o){ return !o.deletedAt && !o.addon && ymd(o.createdAt)===today && (o.status==='paid'||o.status==='cancelled'); })
+  var past=S.orders.filter(function(o){ return !o.deletedAt && !o.addon && brOf(o)===S.deviceBranch && ymd(o.createdAt)===today && (o.status==='paid'||o.status==='cancelled'); })
     .sort(function(a,b){ return (a.paidAt||a.cancelledAt||0)-(b.paidAt||b.cancelledAt||0); });
   var keep=rS.browsing?L.scrollTop:null; rS.prog=true;
   L.innerHTML='<div class="pastlist">'+past.map(pastHTML).join('')+(past.length?'<div class="pastsep">▲ Đơn đã xong hôm nay ('+past.length+')</div>':'')+'</div><div id="rActive">'+R.map(cardHTML).join('')+'</div>';
@@ -1596,7 +1598,7 @@ function renderAdmin(){
 }
 function admOverview(){
   var today=ymd(Date.now()), os=validOrders().filter(function(o){return ymd(o.createdAt)===today;}), ag=aggregate(os);
-  var vis=visible().filter(inView), pend=vis.filter(function(o){return o.status==='pending';}).length, eating=vis.filter(function(o){return o.status==='served';}).length;
+  var vis=visible(true).filter(inView), pend=vis.filter(function(o){return o.status==='pending';}).length, eating=vis.filter(function(o){return o.status==='served';}).length;
   var last30=validOrders().filter(function(o){return Date.now()-o.createdAt<30*DAY;});
   return '<div class="sec-h"><h2>Hôm nay · '+dayLabel(today)+'</h2><div class="sp-flex"></div><span class="hint">Cập nhật realtime · '+hm(Date.now())+'</span></div>'+
     statsCards(ag,{pend:pend,eating:eating})+
@@ -1765,9 +1767,23 @@ function renderStart(){
 function enterSales(bid){
   S.deviceBranch=bid; S.settings.kiosk=bid; DB.save();
   var b=branchById(bid); $('#salesBr').textContent=b?(b.name+': '+(b.address||'')):'';
-  show('sales'); renderSales();
+  show('sales'); renderCause='switch'; renderSales();
 }
 function goSales(bid){ enterSales(bid); ac(); if(V.ok && !V.wantWake && !V.blocked) V.wake(true); }
+/* Điện thoại: đổi cơ sở ngay, không cần mật khẩu (để chủ quán theo dõi nhiều nơi).
+   iPad / màn hình lớn (máy đặt cố định ở quán): phải nhập mật khẩu Quản trị. */
+function isPhone(){ return Math.min(screen.width,screen.height)<600 || (window.matchMedia && matchMedia('(max-width:760px)').matches); }
+function pickSalesBranch(){
+  function open(){
+    var cur=S.deviceBranch;
+    modal('<h3>Chọn cơ sở</h3><div class="brlist">'+S.branches.map(function(b){ return '<button class="bropt'+(b.id===cur?' on':'')+'" data-sbr="'+b.id+'"><b>'+esc(b.name)+'</b><span>'+esc(b.address||'')+'</span></button>'; }).join('')+'</div><div class="row"><button class="btn" data-close>Đóng</button></div>',function(bg,close){
+      bg.addEventListener('click',function(e){ var x=e.target.closest('[data-sbr]'); if(!x) return; var id=x.getAttribute('data-sbr'); close();
+        if(id!==S.deviceBranch){ rS.browsing=false; enterSales(id); var b=branchById(id); toast('Đã chuyển sang '+(b?b.name+': '+b.address:'')); } });
+    });
+  }
+  if(isPhone()) open();
+  else askPassword('Đổi cơ sở cho máy này?','Nhập mật khẩu Quản trị để chuyển máy sang cơ sở khác.',open,'Tiếp tục','pri');
+}
 function leaveSales(){
   askPassword('Thoát màn hình bán hàng?','Nhập mật khẩu Quản trị để về màn hình chính.',function(){ S.settings.kiosk=null; DB.save(); if(V.wantWake) V.wake(false); renderStart(); show('start'); },'Thoát','pri');
 }
@@ -1803,6 +1819,7 @@ document.addEventListener('click',function(e){
     case 'goAdmin': goAdmin(); break;
     case 'home': renderStart(); show('start'); break;
     case 'salesHome': leaveSales(); break;
+    case 'pickSalesBranch': pickSalesBranch(); break;
     case 'vkSkip': vkProgress(false); V.wantWake=false; micUI(); toast('Đã bỏ qua. Vẫn bán được bằng tay; vào Quản trị → Cài đặt để đổi bộ nhận diện.'); break;
 
     case 'logout': renderStart(); show('start'); break;
