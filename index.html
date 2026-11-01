@@ -363,7 +363,6 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
     </form>
   </div>
 </div>
-<div id="tapStart" class="tapstart hide" data-act="tapStart"><div class="wave" style="width:110px;height:110px;border-radius:50%;background:var(--org);display:flex;align-items:center;justify-content:center;font-size:48px">🎙</div><b>Chạm để bắt đầu bán hàng</b><span>iPad cần một lần chạm để bật micro</span></div>
 <div id="vkLoad" class="overlay hide" style="z-index:75"><div><div class="wave">🎙</div><div class="big" id="vkTitle"></div><div style="margin-top:10px;color:#c9d1de;font-size:17px" id="vkSub"></div><div class="vkbar" id="vkBar"><i id="vkFill"></i></div>
 <div id="vkInfo" style="margin-top:8px;color:#ffd27a;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums"></div>
 <ol class="vksteps" id="vkSteps"><li data-s="dl">Tải gói tiếng Việt</li><li data-s="load">Giải nén &amp; nạp vào bộ nhớ</li><li data-s="mic">Mở micro</li></ol>
@@ -622,10 +621,26 @@ function fbScreen(mode){
   $('#fbForm').classList.toggle('hide',mode!=='login');
 }
 var afterReadyDone=false;
+/* Mở app là bật mic luôn, không cần màn "chạm để bắt đầu".
+   Nếu trình duyệt đòi một lần chạm mới cho bật (iOS), lần chạm đầu tiên bất kỳ sẽ tự kích hoạt. */
+function autoMic(){
+  if(!V.ok) return;
+  V.quiet=true; setTimeout(function(){ V.quiet=false; },4000);
+  try{ ac(); V.wake(true); }catch(e){}
+  function first(){
+    document.removeEventListener('touchstart',first,true); document.removeEventListener('mousedown',first,true);
+    ac();
+    if(!$('#sales').classList.contains('on')) return;
+    if(V.blocked) V.blocked=false; V.needGesture=false;
+    if(!V.wantWake || (V.engine!=='vosk' && !V.running)) V.wake(true);
+    micUI();
+  }
+  document.addEventListener('touchstart',first,true); document.addEventListener('mousedown',first,true);
+}
 function afterReady(){
   if(afterReadyDone) return; afterReadyDone=true;
   renderStart(); syncUI();
-  if(S.settings.kiosk && branchById(S.settings.kiosk)){ enterSales(S.settings.kiosk); $('#tapStart').classList.remove('hide'); }
+  if(S.settings.kiosk && branchById(S.settings.kiosk)){ enterSales(S.settings.kiosk); autoMic(); }
   else show('start');
 }
 
@@ -1082,8 +1097,8 @@ var V={rec:null,running:false,wantWake:false,ptt:null,base:0,len:0,lastFinal:tru
     if(!SR||this.running) return; var self=this, r=new SR();
     r.lang='vi-VN'; r.continuous=true; r.interimResults=true; r.maxAlternatives=5;
     r.onresult=function(e){ self.res(e); };
-    r.onerror=function(e){ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ self.wantWake=false; self.blocked=true; toast('Trình duyệt chặn micro — dùng ô gõ lệnh, hoặc cho phép micro rồi bấm lại nút Mic.','err'); } };
-    r.onend=function(){ self.running=false; self.rec=null; if(self.ptt){ if(self.ptt.released) self.finishPtt(); else self.start(); } else if(self.wantWake) setTimeout(function(){ if(self.wantWake&&!self.running) self.start(); },300); micUI(); };
+    r.onerror=function(e){ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ if(self.quiet){ self.needGesture=true; return; } self.wantWake=false; self.blocked=true; toast('Trình duyệt chặn micro — dùng ô gõ lệnh, hoặc cho phép micro rồi bấm lại nút Mic.','err'); } };
+    r.onend=function(){ self.running=false; self.rec=null; if(self.ptt){ if(self.ptt.released) self.finishPtt(); else self.start(); } else if(self.wantWake && !self.needGesture) setTimeout(function(){ if(self.wantWake&&!self.running&&!self.needGesture) self.start(); },300); micUI(); };
     this.rec=r; this.base=0; this.len=0; this.prefix=''; this.partial='';
     try{ r.start(); this.running=true; }catch(err){ this.running=false; }
     micUI();
@@ -1762,7 +1777,7 @@ document.addEventListener('click',function(e){
     case 'home': renderStart(); show('start'); break;
     case 'salesHome': leaveSales(); break;
     case 'vkSkip': vkProgress(false); V.wantWake=false; micUI(); toast('Đã bỏ qua. Vẫn bán được bằng tay; vào Quản trị → Cài đặt để đổi bộ nhận diện.'); break;
-    case 'tapStart': $('#tapStart').classList.add('hide'); ac(); if(V.ok && !V.blocked) V.wake(true); break;
+
     case 'logout': renderStart(); show('start'); break;
     case 'branchPick': branchPicker(); break;
     case 'addBranch': S.branches.push({id:uid(),name:'Cơ sở '+(S.branches.length+1),address:''}); DB.save(); renderAdmin(); break;
