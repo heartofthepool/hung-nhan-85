@@ -451,7 +451,7 @@ function defaults(){
       {id:'s1',name:'Lễ Quốc khánh 2/9 (mẫu)',from:'2026-09-01',to:'2026-09-02',mode:'plusK',value:5,prices:{}},
       {id:'s2',name:'Tết Nguyên đán (mẫu)',from:'2027-02-05',to:'2027-02-10',mode:'plusK',value:10,prices:{}}
     ],
-    settings:{autoHideMin:60,wakeWord:'ơi bếp, bếp ơi',demo:false},
+    settings:{autoHideMin:60,wakeWord:'ơi bếp, bếp ơi, chị nghĩa ơi',demo:false},
     pw:{hash:null,mustChange:true},
     counter:{date:'',n:0},
     branches:[{id:'cs1',name:'CS1',address:'55B Phan Đăng Lưu'},{id:'cs2',name:'CS2',address:'59 Trần Nhân Tông'}],
@@ -496,6 +496,7 @@ var DB={
     var tps=S.menu.toppings;
     if(!tps.some(function(t){return t.id==='chatron';})){ var ci=tps.map(function(t){return t.id;}).indexOf('cha'); var add=DEFAULT_MENU.toppings.filter(function(t){return t.id==='chatron'||t.id==='chadai';}).map(clone); tps.splice.apply(tps,[ci<0?0:ci,0].concat(add)); tps.forEach(function(t){ if(t.id==='cha') t.aliases=(t.aliases||[]).filter(function(a){return a!=='chả cá';}); }); }
     if(S.settings.wakeWord==='ơi bếp') S.settings.wakeWord='ơi bếp, bếp ơi';
+    ensureWake();
     // thùng rác: xoá hẳn sau 30 ngày (bản đồng bộ xử lý trong FB.loadHistory)
     var now=Date.now();
     if(!FIREBASE_CONFIG) S.orders=S.orders.filter(function(o){ return !o.deletedAt || now-o.deletedAt < 30*DAY; });
@@ -520,11 +521,12 @@ window.addEventListener('storage',function(e){ if(!FIREBASE_CONFIG && e.key===KE
    - Mỗi iPad đăng nhập tài khoản của quán một lần (Firebase Authentication)
    ===================================================================== */
 var FB={on:!!FIREBASE_CONFIG,ready:false,db:null,auth:null,synced:{},cfgJSON:null,delQ:[],online:true,hist:false,started:false,
-  sharedCfg:function(){ return {menu:S.menu,specials:S.specials,branches:S.branches,pw:S.pw,settings:{autoHideMin:S.settings.autoHideMin,wakeWord:S.settings.wakeWord,demo:S.settings.demo}}; },
+  sharedCfg:function(){ return {menu:S.menu,specials:S.specials,branches:S.branches,pw:S.pw,settings:{autoHideMin:S.settings.autoHideMin,wakeWord:S.settings.wakeWord,demo:S.settings.demo,wakeAdded2:!!S.settings.wakeAdded2}}; },
   applyCfg:function(c){
     S.menu=c.menu||S.menu; S.specials=c.specials||[]; S.branches=c.branches||S.branches; S.pw=c.pw||S.pw;
-    if(c.settings){ S.settings.autoHideMin=c.settings.autoHideMin; S.settings.wakeWord=c.settings.wakeWord; S.settings.demo=!!c.settings.demo; }
+    if(c.settings){ S.settings.autoHideMin=c.settings.autoHideMin; S.settings.wakeWord=c.settings.wakeWord; S.settings.demo=!!c.settings.demo; S.settings.wakeAdded2=!!c.settings.wakeAdded2; }
     if(!branchById(S.deviceBranch)) S.deviceBranch=S.branches[0]&&S.branches[0].id;
+    ensureWake();
     buildVocab();
   },
   loadSDK:function(cb){
@@ -625,6 +627,21 @@ function fbScreen(mode){
 var afterReadyDone=false;
 /* Mở app là bật mic luôn, không cần màn "chạm để bắt đầu".
    Nếu trình duyệt đòi một lần chạm mới cho bật (iOS), lần chạm đầu tiên bất kỳ sẽ tự kích hoạt. */
+/* Thoát app ra màn hình chính / chuyển sang app khác → tắt hẳn mic (hết biểu tượng micro).
+   Mở lại app → tự nghe tiếp. */
+var bgMic=false;
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){
+    bgMic=!!V.wantWake; if(hold){ hold=null; overlay(false); }
+    if(V.wantWake) V.wake(false);
+    if(V.ptt) V.ptt=null;
+    if(V.closeMic) V.closeMic();
+    if(AC && AC.suspend) try{ AC.suspend(); }catch(e){}
+  } else {
+    if(bgMic && $('#sales').classList.contains('on')){ bgMic=false; autoMic(); }
+  }
+});
+window.addEventListener('pagehide',function(){ if(V.wantWake) V.wake(false); if(V.closeMic) V.closeMic(); });
 function autoMic(){
   if(!V.ok) return;
   V.quiet=true; setTimeout(function(){ V.quiet=false; },4000);
@@ -969,6 +986,13 @@ function lev(a,b){
 }
 var OI_LIKE=['oi','hoi','ui','doi','voi','loi','oii','ơi'];
 function wmatch(w,x){ if(w===x) return true; if(w==='oi') return OI_LIKE.indexOf(x)>=0; return w.length>=3 && x.length>=2 && lev(w,x)<=1; }
+/* thêm câu gọi "chị nghĩa ơi" vào dữ liệu cũ (chỉ thêm 1 lần; nếu chủ quán xoá trong Cài đặt thì thôi) */
+function ensureWake(){
+  if(S.settings.wakeAdded2) return;
+  var w=String(S.settings.wakeWord||'');
+  if(!/ngh[iĩ]a/i.test(w)) S.settings.wakeWord=(w?w+', ':'')+'chị nghĩa ơi';
+  S.settings.wakeAdded2=true;
+}
 function wakeShow(){ return String(S.settings.wakeWord||'').split(',').map(function(x){return cap(x.trim());}).filter(Boolean); }
 function wakeList(){ return String(S.settings.wakeWord||'').split(',').map(function(p){ return stripD(norm(p)).split(' ').filter(Boolean); }).filter(function(a){return a.length;}); }
 /* tìm từ kích hoạt ở bất kỳ đâu trong câu, chấp nhận nghe hơi lệch (bếp/bết/bép, ơi/hơi/ời…).
@@ -1223,8 +1247,9 @@ var VK={engine:'vosk',ok:!!(navigator.mediaDevices&&navigator.mediaDevices.getUs
   },
   wake:function(on){
     var self=this; this.wantWake=on; micUI();
-    if(on){ this.blocked=false; this.load().catch(function(){}); }
+    if(on){ this.blocked=false; if(this.ready && !this.stream) this.openMic().catch(function(){}); else this.load().catch(function(){}); }
   },
+  closeMic:function(){ try{ if(this.stream) this.stream.getTracks().forEach(function(t){ t.stop(); }); if(this.node) this.node.disconnect(); if(this.src) this.src.disconnect(); }catch(e){} this.stream=null; this.src=null; this.node=null; },
   pttStart:function(onDone){
     var self=this;
     this.ptt={onDone:onDone,acc:'',released:false,flushing:false};
@@ -1284,7 +1309,7 @@ function micUI(){
   if(!V.ok){ c.classList.add('warn'); tx.textContent='Máy này không nghe được giọng nói'; return; }
   if(V.loading){ c.classList.add('warn'); tx.textContent='Đang nạp bộ nhận diện…'; return; }
   if(V.blocked){ c.classList.add('warn'); tx.textContent='Micro bị chặn · bấm để thử lại'; return; }
-  if(V.wantWake){ c.classList.add('live'); tx.innerHTML='Đang nghe'+(V.engine==='vosk'?' (offline)':'')+' · gọi '+wakeShow().map(function(w){return '“'+esc(w)+'”';}).join(' / '); }
+  if(V.wantWake){ c.classList.add('live'); tx.innerHTML='Đang nghe'+(V.engine==='vosk'?' (offline)':'')+' · '+wakeShow().map(function(w){return '“'+esc(w)+'”';}).join(' / '); }
   else tx.textContent='Mic tắt · bấm để bật';
 }
 
