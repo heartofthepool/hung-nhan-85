@@ -43,7 +43,8 @@ body.phone .todaybtn{display:inline-block}
 .tdrep table.ov{font-size:16px}.tdrep table.ov td{padding:8px 6px;border-bottom:1px solid #eee}.tdrep table.ov td.v{font-size:19px}
 .tdrep table.ov tr.hd td{color:#c2410c;border-bottom:2px solid #eee}.tdrep table.ov tr.sub td:first-child{color:#555}
 .tdrep .rev{display:flex;align-items:center;gap:10px;justify-content:flex-end}
-.tdrep .mask{letter-spacing:3px;color:#999}
+.tdrep #tdRev{cursor:pointer;padding:4px 8px;border-radius:8px}
+.tdrep .mask{letter-spacing:3px;color:#999;background:#f1f1f1}
 .syncchip{font-size:13px;font-weight:700;padding:6px 11px;border-radius:99px}
 .syncchip.ok{background:#173a26;color:#6ee7a1}
 .syncchip.off{background:#4a3410;color:#ffcf7a}
@@ -324,7 +325,7 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
     <button class="hbtn" data-act="salesHome" title="Về màn hình chính (cần mật khẩu)">⌂</button>
     <button class="brand salesaddr" data-act="pickSalesBranch" title="Đổi cơ sở"><span class="pin">📍</span><span id="salesBr"></span><span class="car">▾</span></button>
     <div id="micchip" class="micchip" data-act="toggleMic"><i class="dot"></i><span id="micText">Mic tắt</span></div>
-    <button class="todaybtn" data-act="today">Hôm nay</button>
+    <button class="todaybtn" data-act="today">Báo cáo hôm nay</button>
     <div id="syncChip" class="syncchip hide"></div>
     <div id="banners" style="display:flex;gap:6px"></div>
     <div class="sp-flex"></div>
@@ -1800,7 +1801,7 @@ function todayReport(){
   var ag=aggregate(os), dish={}, nd={'bún':0,'bánh đa':0};
   os.forEach(function(o){ o.lines.forEach(function(l){ if(l.kind!=='bowl') return; var k=shortName(l); dish[k]=(dish[k]||0)+l.qty; nd[l.noodle==='bánh đa'?'bánh đa':'bún']+=l.qty; }); });
   function row(k,v,cls){ return '<tr class="'+(cls||'')+'"><td>'+k+'</td><td class="v">'+v+'</td></tr>'; }
-  var h='<div class="tdrep"><h3 style="margin-bottom:2px">Hôm nay · '+esc(br?br.name:'')+'</h3><div class="hint" style="margin-bottom:6px">00:00 – '+hm(Date.now())+' · '+esc(br?br.address:'')+'</div><table class="ov">';
+  var h='<div class="tdrep"><h3 style="margin-bottom:2px">Báo cáo hôm nay · '+esc(br?br.name:'')+'</h3><div class="hint" style="margin-bottom:6px">00:00 – '+hm(Date.now())+' · '+esc(br?br.address:'')+'</div><table class="ov">';
   h+=row('Tổng số bát','<b>'+ag.bowls+'</b>','big');
   h+=row('Bún',nd['bún'],'sub')+row('Bánh đa',nd['bánh đa'],'sub');
   h+=row('Theo nhóm','','hd'); groups().forEach(function(g){ if(ag.g[g]) h+=row(esc(g),ag.g[g],'sub'); });
@@ -1809,10 +1810,10 @@ function todayReport(){
   var drk=Object.keys(ag.dr);
   h+=row('Đồ uống','','hd'); if(drk.length) S.menu.drinks.forEach(function(d){ var n=ag.dr[d.name]; if(!n) return; var vs=ag.drv[d.name]?' <span class="hint">('+Object.keys(ag.drv[d.name]).map(function(k){return cap(k)+' '+ag.drv[d.name][k];}).join(', ')+')</span>':''; h+=row(esc(d.name)+vs,n+' '+esc(d.unit||''),'sub'); }); else h+=row('<span class="hint">Chưa có</span>','','sub');
   h+=row('Số đơn',ag.count);
-  h+=row('Doanh thu ước tính','<span class="rev"><span id="tdRev" class="mask">••••••</span><button class="btn sm" id="tdShow">Xem</button></span>','big');
+  h+=row('Doanh thu','<span class="rev"><span id="tdRev" class="mask" title="Chạm để xem">••••••</span></span>','big');
   h+='</table></div><div class="row"><button class="btn pri" data-close>Đóng</button></div>';
   modal(h,function(bg){
-    bg.querySelector('#tdShow').addEventListener('click',function(){ var r=bg.querySelector('#tdRev'), on=r.classList.contains('mask'); r.classList.toggle('mask',!on); r.textContent=on?money(ag.rev):'••••••'; this.textContent=on?'Ẩn':'Xem'; });
+    bg.querySelector('#tdRev').addEventListener('click',function(){ var on=this.classList.contains('mask'); this.classList.toggle('mask',!on); this.textContent=on?money(ag.rev):'••••••'; });
   });
 }
 function leaveSales(){
