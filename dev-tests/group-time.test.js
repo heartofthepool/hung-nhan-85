@@ -1,0 +1,23 @@
+const { chromium } = require('playwright');
+(async () => { const b=await chromium.launch(); const errs=[]; const ctx=await b.newContext({viewport:{width:1024,height:768},screen:{width:1024,height:768}}); const p=await ctx.newPage(); p.on('pageerror',e=>errs.push(e.message));
+await p.addInitScript(()=>{ window.FIREBASE_CONFIG=null; });
+await p.goto('file://'+require('path').resolve(__dirname,'../index.html')); await p.evaluate(()=>localStorage.clear()); await p.reload(); await p.waitForTimeout(300);
+await p.click('[data-gosales=cs1]');
+const tests=['bếp ơi một trăm hai mươi cá rô','bếp ơi hai trăm linh năm bát cá thu','bếp ơi hai cá rô lúc bảy giờ rưỡi','bếp ơi 20 cá rô 10 đặc biệt lúc 7 giờ 30','bếp ơi mười lăm cá thu 8h','bếp ơi bảy giờ hai mươi cá rô','bếp ơi ba cá bò lúc mười giờ kém mười lăm','bếp ơi hai cá rô chín giờ mười lăm phút'];
+console.log((await p.evaluate(ts=>ts.map(t=>{ const a=analyse(t,'wake'); return t+' => '+(a.r?a.r.items.map(lineText).join(', '):a.kind)+' | time='+a.time+' | bát='+(a.r?bowlCount(a.r.items):0); }),tests)).join('\n'));
+await p.evaluate(()=>{ handleUtterance('bếp ơi hai cá rô','wake'); handleUtterance('bếp ơi một trăm hai mươi cá rô','ptt'); });
+console.log('>60:', await p.textContent('#heardRes'), 'orders', await p.evaluate(()=>S.orders.length));
+await p.evaluate(()=>handleUtterance('bếp ơi 20 cá rô 10 đặc biệt bánh đa lúc 7 giờ 30','ptt'));
+console.log('confirm modal:', await p.evaluate(()=>document.querySelector('.modal h3')&&document.querySelector('.modal h3').textContent));
+await p.click('#bigOk'); await p.waitForTimeout(400);
+console.log('order list:', await p.evaluate(()=>[...document.querySelectorAll('#colL .card')].map(c=>c.className.includes('group')?'[GROUP] '+c.innerText.replace(/\s+/g,' '):c.innerText.replace(/\s+/g,' '))));
+await p.screenshot({path:'group.png'});
+const gid=await p.evaluate(()=>S.orders.find(o=>o.group).id);
+await p.click(`#colL [data-ok="${gid}"]`); await p.waitForTimeout(150);
+console.log('xong confirm:', await p.evaluate(()=>document.querySelector('.modal h3').textContent));
+await p.click('#gDone'); await p.waitForTimeout(800);
+console.log('group served:', await p.evaluate(id=>S.orders.find(o=>o.id===id).status,gid), 'right first is group:', await p.evaluate(()=>document.querySelector('#rActive .card').className.includes('group')));
+await p.screenshot({path:'group2.png'});
+// phone auth per day
+console.log('phone day auth:', await p.evaluate(()=>{ window.isPhone=()=>true; localStorage.setItem('hn85_auth',String(Date.now()-3*3600000)); window.__auth=0; var a=authFresh(); var y=new Date(); y.setDate(y.getDate()-1); localStorage.setItem('hn85_auth',String(y.getTime())); return a+' / yesterday:'+authFresh(); }));
+console.log('ERR',errs); await b.close(); })();
