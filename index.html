@@ -922,7 +922,7 @@ function cloneLine(l){ var c=clone(l); c.id=uid(); delete c._explicit; return c;
 /* phân tích một chuỗi token thành các dòng món */
 function parseItems(toks,ctx){
   ctx=ctx||{}; var date=ctx.date||Date.now();
-  var items=[],orphan=[],last=ctx.last||null,pq=null,pn=null,mode=null,mq=null,kwAt=-1,take=false,eat=false,pprice=null;
+  var items=[],orphan=[],last=ctx.last||null,pq=null,pn=null,mode=null,mq=null,kwAt=-1,take=false,eat=false,pprice=null,pn4=false;
   function applyPrice(l){ if(pprice!=null && l){ l.base=pprice; l.price=pprice; pprice=null; } }
   function skip(j){ while(j<toks.length && (is(toks[j],'FILL')||is(toks[j],'UNIT'))) j++; return j; }
   function split(){ if(pq==null) return; var n=pq; pq=null; if(!last) return; if(last.qty>n){ last.qty-=n; var c=cloneLine(last); c.qty=n; items.push(c); last=c; } }
@@ -938,6 +938,9 @@ function parseItems(toks,ctx){
       var nx1=toks[i+1], isPrice=t.price || (nx1 && is(nx1,'PRICEU')) || (t.n>=1000 && t.n<=2000000);
       if(isPrice){ var amt=t.n<1000?t.n*1000:t.n; if(nx1 && is(nx1,'PRICEU')) i++; var tg=items[items.length-1];
         if(tg && pq==null){ tg.base=amt; tg.price=amt; } else pprice=amt; mode=null; continue; }
+      // Trình duyệt hay nghe "bún" thành "bốn"/"4": số 4 đứng SÁT trước tên món → là "bún", không phải 4 bát.
+      // ("4 bát bún thập cẩm" → "4 bát 4 thập cẩm" vẫn ra 4 bát; muốn gọi 4 bát thì nói "bốn bát…" / "bốn bún…")
+      if(t.n===4 && !t.price && nx1 && is(nx1,'DISH') && !mode && /^(4|bốn|bon)$/i.test(t.text) && !/^(bát|tô|suất|phần|bún|bánh đa|bat|to|suat|phan|bun|banh da)( |$)/i.test(nx1.text)){ pn='bún'; pn4=true; continue; }
       var j=skip(i+1);
       if(mode && toks[j] && is(toks[j],'TOP') && !is(toks[j],'DISH') && !is(toks[j],'DRINK')){ mq=t.n; continue; }
       pq=t.n; mode=null; continue;
@@ -974,11 +977,11 @@ function parseItems(toks,ctx){
       var nd=ent(t,'NOODLE').ref, j2=skip(i+1), nx=toks[j2];
       if(nx && is(nx,'REPLACE')){ if(pq!=null) split(); if(last) last.noodle=nd; var k=skip(j2+1); i=(toks[k]&&is(toks[k],'NOODLE'))?k:j2; continue; }
       if(nx && is(nx,'DISH')){ pn=nd; continue; }
-      if(pq!=null) split(); if(last) last.noodle=nd; continue;
+      if(pq!=null) split(); if(last){ if(last._b4 && nd==='bánh đa'){ last.qty=4; } last.noodle=nd; } continue;
     }
     if(is(t,'DISH')){
       var b=bowlById(ent(t,'DISH').ref); if(!b) continue;
-      var l=makeBowl(b,pq||1,pn,date); l._explicit=(pq!=null); applyPrice(l); items.push(l); last=l; pq=null; pn=null; mode=null; continue;
+      var l=makeBowl(b,pq||1,pn,date); l._explicit=(pq!=null); if(pn4){ l._b4=true; pn4=false; } applyPrice(l); items.push(l); last=l; pq=null; pn=null; mode=null; continue;
     }
     if(is(t,'DRINK')){
       var e=ent(t,'DRINK'), d=drinkById(e.ref); if(!d) continue;
@@ -1034,7 +1037,7 @@ function doAdd(o,toks){
   }
   if(o.status==='pending' && orphan.length && !targets.length) return NO('Đơn chưa có bát để thêm/bớt');
   if(r.take) o.takeaway=true; if(r.eat) o.takeaway=false;
-  items.forEach(function(it){ delete it._explicit; });
+  items.forEach(function(it){ delete it._explicit; delete it._b4; });
   if(o.status==='pending'){
     items.forEach(function(it){ o.lines.push(it); });
     orphan.forEach(function(m){ targets.forEach(function(l){ addModTo(l,m); }); });
@@ -1261,7 +1264,7 @@ function analyse(raw,src){
   var tb=extractTable(words); words=tb.words;
   var toks=tokenize(words.join(' ')), tg=findTarget(toks);
   if(tg) return {kind:'edit',target:tg,toks:toks,raw:raw};
-  var r=parseItems(toks); r.items.forEach(function(it){ delete it._explicit; });
+  var r=parseItems(toks); r.items.forEach(function(it){ delete it._explicit; delete it._b4; });
   var kind=r.items.length?'order':(gp.group?'group':'none');
   if(kind==='none' && src==='wake' && !w.strict) kind='ignore';
   return {kind:kind,r:r,toks:toks,raw:raw,time:tx.time,group:gp.group,people:gp.people,table:tb.table};
@@ -2202,7 +2205,7 @@ document.addEventListener('change',function(e){
 DB.load(); buildVocab();
 if(voiceEngine()==='vosk') V=VK;
 var __kiosk=null;
-var APP_VER='01/11 22:40';
+var APP_VER='01/11 22:45';
 $('#startNote').innerHTML='Phiên bản '+APP_VER+' · '+(S.pw.hash?'':'Mật khẩu Quản trị bản demo: <b>1234</b> (đổi ngay ở lần đăng nhập đầu) · ')+(V.ok?'Trình duyệt có nhận diện giọng nói':'Trình duyệt này không có nhận diện giọng nói — vẫn dùng được bằng ô gõ lệnh');
 markPhone();
 if(FB.on) FB.boot(); else afterReady();
