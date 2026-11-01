@@ -80,7 +80,7 @@ input,select,textarea{font:inherit;color:inherit}
 .brand .bico{width:40px;height:40px;border-radius:12px;background:var(--cream);display:flex;align-items:center;justify-content:center}
 .brand .bico img{width:32px;height:32px}
 .brand span{font-weight:400;color:#8e98a8}
-.brand.salesaddr{font-size:19px;min-width:0}
+.brand.salesaddr{font-size:19px;min-width:0;background:#1d2531;border:1px solid #2c3646;border-radius:12px;padding:6px 12px}
 .brand.salesaddr #salesBr{color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand.salesaddr .pin{font-size:18px}
 .micchip{display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:99px;padding:7px 14px;font-size:15px;cursor:pointer}
@@ -281,7 +281,9 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
   .cols{flex-direction:column;padding:8px;gap:8px}
   .col.doing{flex:3}.col.done{flex:2}
   .top{gap:6px;padding:6px 8px;min-height:0}
-  .brand span,.clock,#syncChip{display:none}
+  .brand:not(.salesaddr) span,.clock,#syncChip{display:none}
+  .brand.salesaddr{order:-1;width:calc(100% - 48px);font-size:16px}
+  #sales .top .micchip{order:2}
   .brand .bico{width:32px;height:32px}.brand .bico img{width:26px;height:26px}
   .micchip{font-size:12px;padding:5px 10px}
   .heard{font-size:15px;min-height:36px;padding:6px 10px}.heard .lb{display:none}
