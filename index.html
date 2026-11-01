@@ -505,6 +505,7 @@ var DEFAULT_MENU = {
     {id:'tccabo',short:'Thập cẩm cá bò',name:'Bún thập cẩm cá bò',price:35000,group:'Bát thường',aliases:['thập cẩm bò']},
     {id:'cabong',short:'Cá bống',name:'Bún cá bống',price:35000,group:'Bát thường',aliases:['cá bống','bống']},
     {id:'tccabong',short:'Thập cẩm cá bống',name:'Bún thập cẩm cá bống',price:35000,group:'Bát thường',aliases:['thập cẩm bống']},
+    {id:'thapcam',short:'Thập cẩm',name:'Bún thập cẩm',price:35000,group:'Bát thường',aliases:['thập cẩm','bát thập cẩm']},
     {id:'custom',short:'Tự chọn',name:'Bát khách tự chọn',price:35000,group:'Khác',aliases:['tự chọn','bát tự chọn','custom']}
   ],
   drinks:[
@@ -614,10 +615,10 @@ window.addEventListener('storage',function(e){ if(!FIREBASE_CONFIG && e.key===KE
    - Mỗi iPad đăng nhập tài khoản của quán một lần (Firebase Authentication)
    ===================================================================== */
 var FB={on:!!FIREBASE_CONFIG,ready:false,db:null,auth:null,synced:{},cfgJSON:null,delQ:[],online:true,hist:false,started:false,
-  sharedCfg:function(){ return {menu:S.menu,specials:S.specials,branches:S.branches,pw:S.pw,settings:{autoHideMin:S.settings.autoHideMin,wakeWord:S.settings.wakeWord,demo:S.settings.demo,wakeAdded2:!!S.settings.wakeAdded2}}; },
+  sharedCfg:function(){ return {menu:S.menu,specials:S.specials,branches:S.branches,pw:S.pw,settings:{autoHideMin:S.settings.autoHideMin,wakeWord:S.settings.wakeWord,demo:S.settings.demo,wakeAdded2:!!S.settings.wakeAdded2,tcAdded:!!S.settings.tcAdded}}; },
   applyCfg:function(c){
     S.menu=c.menu||S.menu; S.specials=c.specials||[]; S.branches=c.branches||S.branches; S.pw=c.pw||S.pw;
-    if(c.settings){ S.settings.autoHideMin=c.settings.autoHideMin; S.settings.wakeWord=c.settings.wakeWord; S.settings.demo=!!c.settings.demo; S.settings.wakeAdded2=!!c.settings.wakeAdded2; }
+    if(c.settings){ S.settings.autoHideMin=c.settings.autoHideMin; S.settings.wakeWord=c.settings.wakeWord; S.settings.demo=!!c.settings.demo; S.settings.wakeAdded2=!!c.settings.wakeAdded2; S.settings.tcAdded=!!c.settings.tcAdded; }
     if(!branchById(S.deviceBranch)) S.deviceBranch=S.branches[0]&&S.branches[0].id;
     ensureWake();
     buildVocab();
@@ -1110,7 +1111,14 @@ function lev(a,b){
 var OI_LIKE=['oi','hoi','ui','doi','voi','loi','oii','ơi'];
 function wmatch(w,x){ if(w===x) return true; if(w==='oi') return OI_LIKE.indexOf(x)>=0; return w.length>=3 && x.length>=2 && lev(w,x)<=1; }
 /* thêm câu gọi "chị nghĩa ơi" vào dữ liệu cũ (chỉ thêm 1 lần; nếu chủ quán xoá trong Cài đặt thì thôi) */
+/* thêm món mới vào menu đang dùng (1 lần; chủ quán xoá trong Menu thì thôi) */
+function ensureMenu(){
+  if(S.settings.tcAdded) return;
+  if(!S.menu.bowls.some(function(b){return b.id==='thapcam';})){ var ci=S.menu.bowls.map(function(b){return b.id;}).indexOf('custom'); var tc=clone(DEFAULT_MENU.bowls.filter(function(b){return b.id==='thapcam';})[0]); S.menu.bowls.splice(ci<0?S.menu.bowls.length:ci,0,tc); }
+  S.settings.tcAdded=true;
+}
 function ensureWake(){
+  ensureMenu();
   if(S.settings.wakeAdded2) return;
   var w=String(S.settings.wakeWord||'');
   if(!/ngh[iĩ]a/i.test(w)) S.settings.wakeWord=(w?w+', ':'')+'chị nghĩa ơi';
