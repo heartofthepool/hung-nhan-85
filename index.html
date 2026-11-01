@@ -393,6 +393,24 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
 #sales .card.tk .ptag,#sales .card.tk .detail .dsum b{color:#166534}
 #sales .card.addon{box-shadow:inset 0 0 0 3px var(--org),0 2px 0 rgba(0,0,0,.25)}
 #sales .card .btn-pen:active,#sales .card .btn-pen.hold{filter:brightness(.92)}
+.modal.tdmodal{padding:14px 16px;max-height:94vh}
+.tdrep{font-size:13px;color:#1c2330}
+.tdh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px}
+.tdh b{font-size:16px}.tdh span{color:#6b7280;font-size:12px;white-space:nowrap}
+.tdgrid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:6px}
+.tdc{background:#f4f2ee;border-radius:10px;padding:6px 4px;text-align:center}
+.tdc b{display:block;font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
+.tdc span{font-size:11px;color:#6b7280}
+.tdc.big{background:#1a212d;color:#fff}.tdc.big span{color:#aab3c2}.tdc.big b{font-size:24px}
+.tdline{margin-top:6px;font-size:12.5px;color:#444;text-align:center}
+.tdsec{margin:10px 0 4px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#c2410c}
+.td2{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px}
+.td2>div{display:flex;justify-content:space-between;border-bottom:1px solid #f0ede7;padding:2px 0}
+.td2 b{font-variant-numeric:tabular-nums}
+.tdnone{color:#9ca3af;border:0!important}
+.tdrev{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:2px solid #eee;font-size:15px;font-weight:700}
+.tdrev #tdRev{cursor:pointer;padding:3px 10px;border-radius:8px;font-size:17px;font-variant-numeric:tabular-nums}
+.tdrev .mask{letter-spacing:3px;color:#999;background:#f1f1f1}
 </style>
 </head>
 <body>
@@ -2051,19 +2069,21 @@ function todayReport(){
   var os=S.orders.filter(function(o){ return !o.deletedAt && !o.demo && brOf(o)===S.deviceBranch && ymd(o.createdAt)===today && (o.status==='pending'||o.status==='served'||o.status==='paid'); });
   var ag=aggregate(os), dish={}, nd={'bún':0,'bánh đa':0};
   os.forEach(function(o){ o.lines.forEach(function(l){ if(l.kind!=='bowl') return; var k=shortName(l); dish[k]=(dish[k]||0)+l.qty; nd[l.noodle==='bánh đa'?'bánh đa':'bún']+=l.qty; }); });
-  function row(k,v,cls){ return '<tr class="'+(cls||'')+'"><td>'+k+'</td><td class="v">'+v+'</td></tr>'; }
-  var h='<div class="tdrep"><h3 style="margin-bottom:2px">Báo cáo hôm nay · '+esc(br?br.name:'')+'</h3><div class="hint" style="margin-bottom:6px">00:00 – '+hm(Date.now())+' · '+esc(br?br.address:'')+'</div><table class="ov">';
-  h+=row('Tổng số bát','<b>'+ag.bowls+'</b>','big');
-  h+=row('Bún',nd['bún'],'sub')+row('Bánh đa',nd['bánh đa'],'sub');
-  h+=row('Theo nhóm','','hd'); groups().forEach(function(g){ if(ag.g[g]) h+=row(esc(g),ag.g[g],'sub'); });
+  function cell(k,v,big){ return '<div class="tdc'+(big?' big':'')+'"><b>'+v+'</b><span>'+k+'</span></div>'; }
+  var h='<div class="tdrep"><div class="tdh"><b>Báo cáo hôm nay · '+esc(br?br.name:'')+'</b><span>00:00 – '+hm(Date.now())+'</span></div>';
+  h+='<div class="tdgrid">'+cell('bát',ag.bowls,1)+cell('bún',nd['bún'])+cell('bánh đa',nd['bánh đa'])+cell('đơn',ag.count)+'</div>';
+  var gs=groups().filter(function(g){ return ag.g[g]; });
+  if(gs.length) h+='<div class="tdline">'+gs.map(function(g){ return esc(g.replace(/^Bát /,''))+' <b>'+ag.g[g]+'</b>'; }).join(' · ')+'</div>';
   var dk=Object.keys(dish).sort(function(a,b){return dish[b]-dish[a];});
-  if(dk.length){ h+=row('Loại bát','','hd'); dk.forEach(function(k){ h+=row(esc(k),dish[k],'sub'); }); }
-  var drk=Object.keys(ag.dr);
-  h+=row('Đồ uống','','hd'); if(drk.length) S.menu.drinks.forEach(function(d){ var n=ag.dr[d.name]; if(!n) return; var vs=ag.drv[d.name]?' <span class="hint">('+Object.keys(ag.drv[d.name]).map(function(k){return cap(k)+' '+ag.drv[d.name][k];}).join(', ')+')</span>':''; h+=row(esc(d.name)+vs,n+' '+esc(d.unit||''),'sub'); }); else h+=row('<span class="hint">Chưa có</span>','','sub');
-  h+=row('Số đơn',ag.count);
-  h+=row('Doanh thu','<span class="rev"><span id="tdRev" class="mask" title="Chạm để xem">••••••</span></span>','big');
-  h+='</table></div><div class="row"><button class="btn pri" data-close>Đóng</button></div>';
+  h+='<div class="tdsec">Loại bát</div><div class="td2">'+(dk.length?dk.map(function(k){ return '<div><span>'+esc(k)+'</span><b>'+dish[k]+'</b></div>'; }).join(''):'<div class="tdnone">Chưa có</div>')+'</div>';
+  var drs=[]; S.menu.drinks.forEach(function(d){ var n=ag.dr[d.name]; if(!n) return;
+    if(ag.drv[d.name] && (d.vonly || Object.keys(ag.drv[d.name]).length)){ var sumv=0; Object.keys(ag.drv[d.name]).forEach(function(v){ drs.push([drinkLabel({name:d.name,variant:v,itemId:d.id}),ag.drv[d.name][v]]); sumv+=ag.drv[d.name][v]; }); if(n-sumv>0) drs.push([d.name,n-sumv]); }
+    else drs.push([d.name,n]); });
+  h+='<div class="tdsec">Đồ uống</div><div class="td2">'+(drs.length?drs.map(function(x){ return '<div><span>'+esc(x[0])+'</span><b>'+x[1]+'</b></div>'; }).join(''):'<div class="tdnone">Chưa có</div>')+'</div>';
+  h+='<div class="tdrev"><span>Doanh thu</span><span id="tdRev" class="mask" title="Chạm để xem">••••••</span></div>';
+  h+='</div><div class="row" style="margin-top:10px"><button class="btn pri" data-close style="width:100%">Đóng</button></div>';
   modal(h,function(bg){
+    bg.querySelector('.modal').classList.add('tdmodal');
     bg.querySelector('#tdRev').addEventListener('click',function(){ var on=this.classList.contains('mask'); this.classList.toggle('mask',!on); this.textContent=on?money(ag.rev):'••••••'; });
   });
 }
