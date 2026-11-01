@@ -561,9 +561,21 @@ var FB={on:!!FIREBASE_CONFIG,ready:false,db:null,auth:null,synced:{},cfgJSON:nul
         try{ self.db.enablePersistence({synchronizeTabs:true}).catch(function(){}); }catch(e){}
         self.auth=firebase.auth();
       }catch(err){ clearTimeout(t); toast('Trình duyệt này không chạy được Firebase — tạm dùng dữ liệu trên máy','err'); afterReady(); return; }
+      try{ self.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){}); }catch(e){}
       self.auth.onAuthStateChanged(function(u){
-        if(u){ self.start(function(){ clearTimeout(t); afterReady(); }); }
-        else { clearTimeout(t); self.stop(); fbScreen('login'); }
+        if(u){ self.start(function(){ clearTimeout(t); afterReady(); }); return; }
+        self.stop();
+        // Safari làm mất phiên đăng nhập → tự đăng nhập lại ngầm bằng tài khoản quán đã lưu trên máy
+        var acc=savedAcc();
+        if(acc && !self.silentTried){
+          self.silentTried=true;
+          self.auth.signInWithEmailAndPassword(acc.e,acc.p).catch(function(er){
+            if(er && (er.code==='auth/network-request-failed' || er.code==='auth/internal-error')){ clearTimeout(t); afterReady(); toast('Chưa có mạng — vẫn bán bình thường, có mạng sẽ tự đồng bộ'); self.retryLater(acc); }
+            else { forgetAcc(); clearTimeout(t); fbScreen('login'); }
+          });
+          return;
+        }
+        clearTimeout(t); fbScreen('login');
       });
     });
   },
@@ -579,6 +591,7 @@ var FB={on:!!FIREBASE_CONFIG,ready:false,db:null,auth:null,synced:{},cfgJSON:nul
       self.applyOrders(snap);
     },function(err){ console.warn(err); self.online=false; syncUI(); });
   },
+  retryLater:function(acc){ var self=this; window.addEventListener('online',function once(){ window.removeEventListener('online',once); self.silentTried=false; self.auth.signInWithEmailAndPassword(acc.e,acc.p).catch(function(){}); }); },
   stop:function(){ if(this.unsubCfg) this.unsubCfg(); if(this.unsubOrd) this.unsubOrd(); this.started=false; this.ready=false; },
   applyOrders:function(snap){
     var self=this, ch=snap.docChanges(); if(!ch.length) return;
@@ -623,6 +636,9 @@ var FB={on:!!FIREBASE_CONFIG,ready:false,db:null,auth:null,synced:{},cfgJSON:nul
     }).catch(function(e){ toast('Không tải được lịch sử: '+(e&&e.code||''),'err'); if(cb) cb(); });
   }
 };
+function savedAcc(){ try{ var x=localStorage.getItem('hn85_acc'); return x?JSON.parse(decodeURIComponent(escape(atob(x)))):null; }catch(e){ return null; } }
+function saveAcc(e,p){ try{ localStorage.setItem('hn85_acc',btoa(unescape(encodeURIComponent(JSON.stringify({e:e,p:p}))))); }catch(er){} }
+function forgetAcc(){ try{ localStorage.removeItem('hn85_acc'); }catch(e){} }
 function syncUI(){
   var c=$('#syncChip'); if(!c) return;
   if(!FB.on){ c.className='syncchip hide'; return; }
@@ -1870,7 +1886,7 @@ document.addEventListener('click',function(e){
     case 'backup': download('sao-luu-hung-nhan-85-'+ymd(Date.now())+'.json',JSON.stringify(S),'application/json'); break;
     case 'backupCopy': download('sao-luu-hung-nhan-85-'+ymd(Date.now())+'.json',JSON.stringify(S),'application/json'); break;
     case 'genSample': if(FB.on && !confirmSample()) break; genSample(); renderAdmin(); break;
-    case 'fbLogout': askPassword('Ngắt kết nối máy này?','Máy sẽ cần đăng nhập lại tài khoản quán.',function(){ FB.auth.signOut(); },'Ngắt kết nối','dan'); break;
+    case 'fbLogout': askPassword('Ngắt kết nối máy này?','Máy sẽ cần đăng nhập lại tài khoản quán.',function(){ forgetAcc(); FB.auth.signOut(); },'Ngắt kết nối','dan'); break;
     case 'delSample': FB.removeOrders(function(o){return o.sample;}); DB.save(); renderAdmin(); toast('Đã xóa dữ liệu mẫu'); break;
     case 'factory': if(FB.on){ toast('Bản đồng bộ: xóa dữ liệu trực tiếp trên Firebase Console để tránh xóa nhầm của mọi chi nhánh','err'); break; } askPassword('Xóa sạch toàn bộ dữ liệu?','Mọi đơn, menu, cài đặt trở về mặc định. <b>Không khôi phục được</b> (trừ khi có file sao lưu).',function(){ try{ localStorage.removeItem(KEY); }catch(e){} DB.load(); buildVocab(); undoStack.length=0; renderStart(); show('start'); toast('Đã xóa sạch'); }); break;
   }
@@ -1879,7 +1895,8 @@ document.addEventListener('submit',function(e){
   var f=e.target;
   if(f.id==='testForm'){ e.preventDefault(); $('#testOut').innerHTML=testHTML($('#testIn').value); return; }
   if(f.id==='fbForm'){ e.preventDefault(); $('#fbErr').textContent='Đang kết nối…';
-    FB.auth.signInWithEmailAndPassword($('#fbEmail').value.trim(),$('#fbPass').value).then(function(){ $('#fbErr').textContent=''; }).catch(function(er){
+    var em=$('#fbEmail').value.trim(), pw=$('#fbPass').value;
+    FB.auth.signInWithEmailAndPassword(em,pw).then(function(){ saveAcc(em,pw); $('#fbErr').textContent=''; }).catch(function(er){
       var m={'auth/invalid-credential':'Sai email hoặc mật khẩu','auth/wrong-password':'Sai mật khẩu','auth/user-not-found':'Không có tài khoản này','auth/invalid-email':'Email không hợp lệ','auth/network-request-failed':'Không có mạng','auth/too-many-requests':'Thử sai nhiều quá, đợi một lát'}[er.code];
       $('#fbErr').textContent=m||('Lỗi: '+er.code); });
     return; }
