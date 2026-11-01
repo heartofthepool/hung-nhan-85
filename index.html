@@ -1113,7 +1113,10 @@ function doReplace(o,L,R){
 }
 
 /* ---- điểm vào chung cho mọi câu nói ---- */
-function prep(raw){ var s=norm(String(raw||'').replace(/(\d)[.,](?=\d{3}(?!\d))/g,'$1').replace(/(\d)\s*(đ|vnđ|vnd)(?![a-zà-ỹ])/gi,'$1 đồng')); if(VI_RE.test(s)) s=applyFix(s); return s; }
+/* Trình duyệt hay nghe "thập cẩm" thành "10 cẩm", "tập cẩm", "thấp cẩm"... → sửa lại trước khi phân tích */
+var TC_RE=/(^| )(10|mười|muoi|thập|thap|tập|tap|thấp|thạp|thắp|thâp|tháp)( |-)(cẩm|cam|cẩn|cảm|cấm|cẫm|cầm|kẩm|cẩm\.)(?= |$)/gi;
+function fixThapCam(s){ return s.replace(TC_RE,'$1thập cẩm'); }
+function prep(raw){ var s=fixThapCam(norm(String(raw||'').replace(/(\d)[.,](?=\d{3}(?!\d))/g,'$1').replace(/(\d)\s*(đ|vnđ|vnd)(?![a-zà-ỹ])/gi,'$1 đồng'))); if(VI_RE.test(s)) s=applyFix(s); return s; }
 function lev(a,b){
   if(Math.abs(a.length-b.length)>1) return 2; var d=[],i,j;
   for(i=0;i<=a.length;i++){ d[i]=[i]; } for(j=0;j<=b.length;j++) d[0][j]=j;
@@ -1539,8 +1542,9 @@ function chipMsg(html,cls,ms){
   chipBusy=true; c.className='micchip msg '+cls; tx.innerHTML=html;
   clearTimeout(chipT); chipT=setTimeout(function(){ chipBusy=false; micUI(); },ms||10000);
 }
-function liveHeard(t){ $('#heardText').textContent=t||'…'; chipMsg(esc(t||'…'),'live',10000); }
+function liveHeard(t){ t=String(t||'').replace(TC_RE,'$1thập cẩm'); $('#heardText').textContent=t||'…'; chipMsg(esc(t||'…'),'live',10000); }
 function showHeard(raw,cls,msg){
+  raw=String(raw||'').replace(TC_RE,'$1thập cẩm');
   var h=$('#heardText'); h.textContent='“'+raw+'”'; h.className='';
   var r=$('#heardRes'); r.className='res '+cls; r.textContent=msg; r.title=msg;
   chipMsg(esc(msg)+'<span class="cm-raw">“'+esc(raw)+'”</span>',cls,10000);
