@@ -160,6 +160,7 @@ body.phone .todaybtn{display:inline-block}
 .chip.m-no{background:#e5484d;color:#fff}
 .chip.m-add{background:#e0994a;color:#fff}
 .chip.m-mix{background:#0ca678;color:#fff}
+.chip.m-price{background:#111827;color:#fde047;border:1px solid #fde047}
 .nd{display:inline-block;font-size:.72em;font-weight:900;padding:2px 9px;border-radius:8px;margin-right:8px;vertical-align:.12em;letter-spacing:.3px}
 .nd-bun{background:#1c2330;color:#fff}
 .nd-bd{background:#7048e8;color:#fff}
@@ -813,6 +814,7 @@ kw('CANCEL',['hủy','huỷ','hủy bỏ','huỷ bỏ','xóa đơn','xoá đơn'
 kw('EDIT',['sửa','chữa','sửa lại']); kw('TO',['thành','sang']);
 kw('ORDER',['đơn','đơn số','order','số']);
 kw('SEP',['và','với','rồi','còn','cộng']);
+kw('PRICEU',['k','nghìn','ngàn','đồng','nghìn đồng','ngàn đồng','ka']);
 kw('FILL',['cho','em','anh','chị','cô','chú','nhé','nha','nhá','ạ','à','ừ','lấy','gọi','làm','của','là','có','thì','ơi','đi','nữa','luôn','giúp','khách','vẫn','vào','ra','chút','một chút','này']);
 
 var FIX=[['bùn','bún'],['buồn','bún'],['bủn','bún'],['bánh đá','bánh đa'],['banh đa','bánh đa'],['trả','chả'],['chà','chả'],['bánh da','bánh đa'],['bánh đà','bánh đa'],['bánh dá','bánh đa'],['cá rổ','cá rô'],['cá rồ','cá rô'],['cá rộ','cá rô'],['cá bóng','cá bống'],['cá bông','cá bống'],['cô ca','coca'],['côca','coca'],['coca cola','coca'],['cocacola','coca'],['bẩy','bảy'],['seven up','7up'],['7 up','7up'],['bảy úp','7up'],['ơi bết','ơi bếp'],['ơi bép','ơi bếp'],['ơi bể','ơi bếp'],['hoành','hành'],['thập cấm','thập cẩm'],['thập cẫm','thập cẩm']];
@@ -875,6 +877,8 @@ function tokenize(s){
   var strip=!VI_RE.test(s);
   var words=s.split(' ').filter(Boolean), kws=strip?words.map(stripD):words, M=strip?VOC.S:VOC.P, out=[], i=0;
   while(i<words.length){
+    var pk=kws[i].match(/^(\d+)(k|nghin|ngan|nghìn|ngàn|d|đ)$/);
+    if(pk){ out.push({text:words[i],e:[{type:'NUM'}],n:+pk[1],price:true}); i++; continue; }
     var best=null;
     for(var L=Math.min(VOC.max,words.length-i);L>=1;L--){ var e=M[kws.slice(i,i+L).join(' ')]; if(e){ best={L:L,e:e}; break; } }
     var num=parseNum(kws,i,strip);
@@ -897,7 +901,8 @@ function cloneLine(l){ var c=clone(l); c.id=uid(); delete c._explicit; return c;
 /* phân tích một chuỗi token thành các dòng món */
 function parseItems(toks,ctx){
   ctx=ctx||{}; var date=ctx.date||Date.now();
-  var items=[],orphan=[],last=ctx.last||null,pq=null,pn=null,mode=null,mq=null,kwAt=-1,take=false,eat=false;
+  var items=[],orphan=[],last=ctx.last||null,pq=null,pn=null,mode=null,mq=null,kwAt=-1,take=false,eat=false,pprice=null;
+  function applyPrice(l){ if(pprice!=null && l){ l.base=pprice; l.price=pprice; pprice=null; } }
   function skip(j){ while(j<toks.length && (is(toks[j],'FILL')||is(toks[j],'UNIT'))) j++; return j; }
   function split(){ if(pq==null) return; var n=pq; pq=null; if(!last) return; if(last.qty>n){ last.qty-=n; var c=cloneLine(last); c.qty=n; items.push(c); last=c; } }
   function addMod(name,price){
@@ -906,7 +911,12 @@ function parseItems(toks,ctx){
   }
   for(var i=0;i<toks.length;i++){
     var t=toks[i];
+    if(is(t,'TOP') && ent(t,'TOP').ref==='gia' && toks[i+1] && is(toks[i+1],'NUM') && !(mode && kwAt===i-1)) continue; // "giá 50 nghìn" = giá tiền, không phải giá đỗ
     if(is(t,'NUM')){
+      // "1 bún thập cẩm 40k", "40 nghìn", "40.000đ" → giá riêng của món đó (giá mỗi bát)
+      var nx1=toks[i+1], isPrice=t.price || (nx1 && is(nx1,'PRICEU')) || (t.n>=1000 && t.n<=2000000);
+      if(isPrice){ var amt=t.n<1000?t.n*1000:t.n; if(nx1 && is(nx1,'PRICEU')) i++; var tg=items[items.length-1];
+        if(tg && pq==null){ tg.base=amt; tg.price=amt; } else pprice=amt; mode=null; continue; }
       var j=skip(i+1);
       if(mode && toks[j] && is(toks[j],'TOP') && !is(toks[j],'DISH') && !is(toks[j],'DRINK')){ mq=t.n; continue; }
       pq=t.n; mode=null; continue;
@@ -947,11 +957,11 @@ function parseItems(toks,ctx){
     }
     if(is(t,'DISH')){
       var b=bowlById(ent(t,'DISH').ref); if(!b) continue;
-      var l=makeBowl(b,pq||1,pn,date); l._explicit=(pq!=null); items.push(l); last=l; pq=null; pn=null; mode=null; continue;
+      var l=makeBowl(b,pq||1,pn,date); l._explicit=(pq!=null); applyPrice(l); items.push(l); last=l; pq=null; pn=null; mode=null; continue;
     }
     if(is(t,'DRINK')){
       var e=ent(t,'DRINK'), d=drinkById(e.ref); if(!d) continue;
-      items.push(makeDrink(d,pq||1,e.variant,date)); pq=null; mode=null; continue;
+      var dl=makeDrink(d,pq||1,e.variant,date); applyPrice(dl); items.push(dl); pq=null; mode=null; continue;
     }
   }
   return {items:items,orphan:orphan,take:take,eat:eat};
@@ -1101,7 +1111,7 @@ function doReplace(o,L,R){
 }
 
 /* ---- điểm vào chung cho mọi câu nói ---- */
-function prep(raw){ var s=norm(raw); if(VI_RE.test(s)) s=applyFix(s); return s; }
+function prep(raw){ var s=norm(String(raw||'').replace(/(\d)[.,](?=\d{3}(?!\d))/g,'$1').replace(/(\d)\s*(đ|vnđ|vnd)(?![a-zà-ỹ])/gi,'$1 đồng')); if(VI_RE.test(s)) s=applyFix(s); return s; }
 function lev(a,b){
   if(Math.abs(a.length-b.length)>1) return 2; var d=[],i,j;
   for(i=0;i<=a.length;i++){ d[i]=[i]; } for(j=0;j<=b.length;j++) d[0][j]=j;
@@ -1285,12 +1295,14 @@ function lineText(l){
   var s=l.qty+' '+(l.kind==='drink'? drinkLabel(l) : shortName(l));
   if(l.kind==='bowl') s+=' ('+(l.noodle||'bún')+')';
   if(l.mods && l.mods.length) s+=' ['+l.mods.map(modLabel).join(', ').toLowerCase()+']';
+  if(l.price) s+=' {giá '+kmoney(l.price)+'}';
   return s;
 }
 function lineHTML(l){
   var chips='';
   var nd = l.kind==='bowl' ? '<span class="nd '+(l.noodle==='bánh đa'?'nd-bd':'nd-bun')+'">'+(l.noodle==='bánh đa'?'BÁNH ĐA':'BÚN')+'</span>' : '';
   (l.mods||[]).forEach(function(m){ chips+='<span class="chip m-'+m.t+'">'+esc(modLabel(m))+'</span>'; });
+  if(l.price) chips+='<span class="chip m-price">GIÁ '+esc(kmoney(l.price).toUpperCase())+'</span>';
   var nm = esc(l.kind==='drink' ? drinkLabel(l) : shortName(l));
   return '<div class="ln'+(l.kind==='extra'?' ex':'')+'"><span class="q">'+l.qty+'</span>'+nd+nm+chips+'</div>';
 }
@@ -1572,7 +1584,7 @@ function toggleExpand(id){
 function detailHTML(o){
   var rows=o.lines.map(function(l){
     var name=l.kind==='drink'?drinkLabel(l):(l.kind==='bowl'?shortName(l)+' ('+(l.noodle||'bún')+')':l.name);
-    var note=(l.mods||[]).map(modLabel).join(', ').toLowerCase();
+    var note=(l.mods||[]).map(modLabel).join(', ').toLowerCase(); if(l.price) note=(note?note+', ':'')+'giá riêng '+kmoney(l.price);
     return '<tr><td class="dq">'+l.qty+'×</td><td>'+esc(name)+(note?'<div class="dn">'+esc(note)+'</div>':'')+'</td><td class="dp">'+money(lineTotal(l))+'</td></tr>';
   }).join('');
   var nb=bowlCount(o.lines), nd=o.lines.filter(function(l){return l.kind==='drink';}).reduce(function(s,l){return s+l.qty;},0);
