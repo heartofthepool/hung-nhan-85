@@ -160,6 +160,8 @@ body.phone .todaybtn{display:inline-block}
 .chip.m-no{background:#e5484d;color:#fff}
 .chip.m-add{background:#e0994a;color:#fff}
 .chip.m-mix{background:#0ca678;color:#fff}
+.tbl{display:inline-block;margin-top:2px;font-size:15px;font-weight:900;letter-spacing:.4px;background:#111827;color:#fff;border-radius:7px;padding:2px 10px}
+.tbl.sm{font-size:12px;padding:1px 7px;margin:0 0 0 6px;vertical-align:1px}
 .chip.m-price{background:#111827;color:#fde047;border:1px solid #fde047}
 .nd{display:inline-block;font-size:.72em;font-weight:900;padding:2px 9px;border-radius:8px;margin-right:8px;vertical-align:.12em;letter-spacing:.3px}
 .nd-bun{background:#1c2330;color:#fff}
@@ -1189,6 +1191,17 @@ function extractTime(words){
 }
 /* "chiều nay có đoàn 50 người", "khách tập thể 30 người lúc 11 giờ" → đơn Đoàn nhiều người */
 var GROUP_WORDS=['đoàn','tập thể','khách đoàn','đoàn khách','tour','team'];
+/* "bàn 5", "bàn số 12", "bàn năm" → số bàn */
+function extractTable(words){
+  var K=words.map(stripD), vi=VI_RE.test(words.join(' '));
+  for(var i=0;i<words.length;i++){
+    if(!(words[i]==='bàn' || (!vi && K[i]==='ban'))) continue;
+    var j=i+1; if(K[j]==='so') j++;
+    var p=parseNum(K,j,true); if(!p || p.n<1 || p.n>300) continue;
+    return {table:p.n,words:words.slice(0,i).concat(words.slice(j+p.L))};
+  }
+  return {table:null,words:words};
+}
 function extractGroup(words){
   var K=words.map(stripD), txt=' '+words.join(' ')+' ', group=false, people=null, cut={};
   GROUP_WORDS.forEach(function(g){ if(txt.indexOf(' '+g+' ')>=0) group=true; });
@@ -1209,12 +1222,13 @@ function analyse(raw,src){
   if(!words.length) return {kind:'ignore',raw:raw};
   var tx=extractTime(words); words=tx.words;
   var gp=extractGroup(words); words=gp.words;
+  var tb=extractTable(words); words=tb.words;
   var toks=tokenize(words.join(' ')), tg=findTarget(toks);
   if(tg) return {kind:'edit',target:tg,toks:toks,raw:raw};
   var r=parseItems(toks); r.items.forEach(function(it){ delete it._explicit; });
   var kind=r.items.length?'order':(gp.group?'group':'none');
   if(kind==='none' && src==='wake' && !w.strict) kind='ignore';
-  return {kind:kind,r:r,toks:toks,raw:raw,time:tx.time,group:gp.group,people:gp.people};
+  return {kind:kind,r:r,toks:toks,raw:raw,time:tx.time,group:gp.group,people:gp.people,table:tb.table};
 }
 var mutating=null;
 function commit(fn){ var before=JSON.stringify({orders:S.orders,counter:S.counter}); var res=fn(); if(res && res.ok){ undoStack.push(before); if(undoStack.length>40) undoStack.shift(); DB.save(); } else { var b=JSON.parse(before); S.orders=b.orders; S.counter=b.counter; } return res; }
@@ -1251,9 +1265,9 @@ function bowlCount(items){ return items.filter(function(l){return l.kind==='bowl
 function createOrder(raw,a,extra){
   var o;
   var res2=commit(function(){ o={id:uid(),num:nextNum(),createdAt:Date.now(),status:'pending',takeaway:a.r.take,lines:a.r.items,demo:!!S.settings.demo,branchId:S.deviceBranch};
-    if(a.time) o.time=a.time; if(extra) for(var k in extra) o[k]=extra[k];
+    if(a.time) o.time=a.time; if(a.table) o.table=a.table; if(extra) for(var k in extra) o[k]=extra[k];
     if(o.people===undefined) delete o.people;
-    S.orders.push(o); return OK((o.group?(o.people?'Đoàn '+o.people+' người':'Đoàn nhiều người')+(o.lines.length?': ':''):'Lên đơn: ')+o.lines.map(lineText).join(', ')+(o.takeaway?' · MANG ĐI':'')+(o.time?' · '+o.time:'')); });
+    S.orders.push(o); return OK((o.group?(o.people?'Đoàn '+o.people+' người':'Đoàn nhiều người')+(o.lines.length?': ':''):'Lên đơn: ')+o.lines.map(lineText).join(', ')+(o.takeaway?' · MANG ĐI':'')+(o.time?' · '+o.time:'')+(o.table?' · bàn '+o.table:'')); });
   feedback(raw,res2); renderSales();
 }
 function confirmBig(raw,a,nb){
@@ -1272,8 +1286,11 @@ function editByText(orderId,cands){
 }
 function editOne(orderId,raw){
   var s=prep(raw), words=s.split(' ').filter(Boolean), w=findWake(words); if(w && w.strict) words=words.slice(w.end);
+  var tb=extractTable(words); words=tb.words;
   var toks=tokenize(words.join(' '));
-  var res=commit(function(){ var o=S.orders.filter(function(x){return x.id===orderId;})[0]; if(!o) return NO('Đơn không còn'); var r=editOrder(o,toks); if(r.ok && o.group && o.status==='cancelled' && !o.lines.length) r.msg='Đã hủy đơn đoàn'; return r; });
+  var res=commit(function(){ var o=S.orders.filter(function(x){return x.id===orderId;})[0]; if(!o) return NO('Đơn không còn');
+    if(tb.table){ o.table=tb.table; var rest=toks.filter(function(t){ return !is(t,'FILL')&&!is(t,'UNK')&&!is(t,'EDIT')&&!is(t,'TO')&&!is(t,'REPLACE'); }); if(!rest.length) return OK('Đã ghi bàn '+tb.table); }
+    var r=editOrder(o,toks); if(tb.table && r.ok) r.msg+=' · bàn '+tb.table; if(r.ok && o.group && o.status==='cancelled' && !o.lines.length) r.msg='Đã hủy đơn đoàn'; return r; });
   return {res:res};
 }
 function nextNum(){ var d=ymd(Date.now()); if(S.counter.date!==d) S.counter={date:d,n:0}; return ++S.counter.n; }
@@ -1588,11 +1605,11 @@ function detailHTML(o){
     return '<tr><td class="dq">'+l.qty+'×</td><td>'+esc(name)+(note?'<div class="dn">'+esc(note)+'</div>':'')+'</td><td class="dp">'+money(lineTotal(l))+'</td></tr>';
   }).join('');
   var nb=bowlCount(o.lines), nd=o.lines.filter(function(l){return l.kind==='drink';}).reduce(function(s,l){return s+l.qty;},0);
-  return '<div class="detail"><table>'+rows+'</table><div class="dsum">'+nb+' bát'+(nd?' · '+nd+' đồ uống':'')+(o.takeaway?' · mang đi':'')+(o.time?' · '+esc(o.time):'')+'<b>'+money(orderTotal(o))+'</b></div></div>';
+  return '<div class="detail"><table>'+rows+'</table><div class="dsum">'+nb+' bát'+(nd?' · '+nd+' đồ uống':'')+(o.takeaway?' · mang đi':'')+(o.time?' · '+esc(o.time):'')+(o.table?' · bàn '+o.table:'')+'<b>'+money(orderTotal(o))+'</b></div></div>';
 }
 function groupHTML(o,isNew){
   var n=o.people||bowlCount(o.lines), open=!!expanded[o.id];
-  return '<div class="card group'+(open?' open':'')+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><div class="ghead"><span class="gtag">ĐOÀN'+(n?' '+n:'')+'</span>'+(o.time?'<span class="gtime">'+esc(o.time)+'</span>':'')+(!open && o.lines.length?'<span class="gmore">▾</span>':'')+'</div>'+(open?(o.lines.length?detailHTML(o):'<div class="detail dn">Chưa có món — bấm giữ Sửa để thêm</div>'):'')+'</div>'+
+  return '<div class="card group'+(open?' open':'')+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><div class="ghead"><span class="gtag">ĐOÀN'+(n?' '+n:'')+'</span>'+(o.time?'<span class="gtime">'+esc(o.time)+'</span>':'')+(o.table?'<span class="tbl sm">BÀN '+o.table+'</span>':'')+(!open && o.lines.length?'<span class="gmore">▾</span>':'')+'</div>'+(open?(o.lines.length?detailHTML(o):'<div class="detail dn">Chưa có món — bấm giữ Sửa để thêm</div>'):'')+'</div>'+
     '<button class="btn-pen" data-pen="'+o.id+'">Sửa</button><button class="btn-ok" data-ok="'+o.id+'">Xong</button></div>';
 }
 /* Cột ĐANG ĂN: thẻ gọn — chỉ loại món, số lượng, thành tiền (không bún/bánh đa, không ghi chú) */
@@ -1601,7 +1618,7 @@ function servedHTML(o,isNew){
   o.lines.forEach(function(l){ var k=l.kind==='drink'?drinkLabel(l):(l.kind==='bowl'?shortName(l):l.name); if(!(k in agg)){ agg[k]=0; order.push(k); } agg[k]+=l.qty; });
   var items=order.map(function(k){ return '<span class="si"><b>'+agg[k]+'</b> '+esc(k)+'</span>'; }).join('');
   if(expanded[o.id]) return '<div class="card served open '+(o.takeaway?'tk':'di')+'" data-id="'+o.id+'"><div class="cbody">'+detailHTML(o)+'</div><button class="btn-pen" data-pen="'+o.id+'">Sửa</button><button class="btn-ok" data-ok="'+o.id+'">Xong</button></div>';
-  return '<div class="card served '+(o.takeaway?'tk':'di')+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><div class="sitems">'+items+'</div><div class="ptag">'+money(orderTotal(o))+'</div></div>'+
+  return '<div class="card served '+(o.takeaway?'tk':'di')+(isNew?' new':'')+'" data-id="'+o.id+'"><div class="cbody"><div class="sitems">'+items+'</div><div class="ptag">'+money(orderTotal(o))+(o.table?' <span class="tbl sm">BÀN '+o.table+'</span>':'')+'</div></div>'+
     '<button class="btn-pen" data-pen="'+o.id+'">Sửa</button><button class="btn-ok" data-ok="'+o.id+'">Xong</button></div>';
 }
 function cardHTML(o){
@@ -1611,7 +1628,7 @@ function cardHTML(o){
   if(o.addon){ var par=S.orders.filter(function(x){return x.id===o.parentId;})[0]; if(par) o.takeaway=par.takeaway; }
   var bd=(o.takeaway?'<span class="bdg">MANG ĐI</span>':'')+(o.addon?'<span class="bdg ad">GỌI THÊM</span>':'');
   return '<div class="card '+(o.takeaway?'tk':'di')+(o.addon?' addon':'')+(isNew?' new':'')+'" data-id="'+o.id+'">'+
-    '<div class="cbody">'+(bd?'<div class="bdgs">'+bd+'</div>':'')+o.lines.map(lineHTML).join('')+(expanded[o.id]?detailHTML(o):'')+'</div>'+
+    '<div class="cbody">'+(bd?'<div class="bdgs">'+bd+'</div>':'')+o.lines.map(lineHTML).join('')+(o.table?'<div><span class="tbl">BÀN '+o.table+'</span></div>':'')+(expanded[o.id]?detailHTML(o):'')+'</div>'+
     '<button class="btn-pen" data-pen="'+o.id+'" title="Giữ để nói lệnh sửa, thả tay ra là xong">Sửa</button>'+
     '<button class="btn-ok" data-ok="'+o.id+'" title="'+(o.status==='pending'?'Đã làm xong':'Khách đã thanh toán')+'">Xong</button></div>';
 }
@@ -1732,7 +1749,7 @@ function hiddenDialog(){
   var today=ymd(Date.now());
   var hs=S.orders.filter(function(o){ return !o.deletedAt && !o.addon && brOf(o)===S.deviceBranch && ymd(o.createdAt)===today && (o.status==='paid'||o.status==='cancelled'); }).sort(function(a,b){return (b.paidAt||b.cancelledAt||0)-(a.paidAt||a.cancelledAt||0);});
   var html='<h3>Lịch sử hôm nay ('+hs.length+' đơn đã xong)</h3><div class="hidlist">'+(hs.length?hs.map(function(o){
-    return '<div class="hrow"><div class="t"><b>'+hm(o.createdAt)+'</b> '+(o.takeaway?'<span class="tagx">mang đi</span>':'')+(o.status==='cancelled'?'<span class="tagx red">đã hủy</span>':'')+(o.autoHidden?'<span class="tagx org">tự ẩn</span>':'')+'<br><span style="color:#555">'+esc(o.lines.map(lineText).join(', '))+'</span><br><small style="color:#888">'+money(orderTotal(o))+'</small></div><button class="btn sm" data-restore="'+o.id+'">Đưa lại</button></div>';
+    return '<div class="hrow"><div class="t"><b>'+hm(o.createdAt)+'</b> '+(o.table?'<span class="tagx">bàn '+o.table+'</span>':'')+(o.takeaway?'<span class="tagx">mang đi</span>':'')+(o.status==='cancelled'?'<span class="tagx red">đã hủy</span>':'')+(o.autoHidden?'<span class="tagx org">tự ẩn</span>':'')+'<br><span style="color:#555">'+esc(o.lines.map(lineText).join(', '))+'</span><br><small style="color:#888">'+money(orderTotal(o))+'</small></div><button class="btn sm" data-restore="'+o.id+'">Đưa lại</button></div>';
   }).join(''):'<p>Chưa có đơn nào bị ẩn.</p>')+'</div><div class="row"><button class="btn" data-close>Đóng</button></div>';
   modal(html,function(bg,close){
     bg.addEventListener('click',function(e){ var b=e.target.closest('[data-restore]'); if(!b) return; var id=b.getAttribute('data-restore');
