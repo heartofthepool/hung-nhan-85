@@ -314,6 +314,7 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
   </div>
 </div>
 <div id="tapStart" class="tapstart hide" data-act="tapStart"><div class="wave" style="width:110px;height:110px;border-radius:50%;background:var(--org);display:flex;align-items:center;justify-content:center;font-size:48px">🎙</div><b>Chạm để bắt đầu bán hàng</b><span>iPad cần một lần chạm để bật micro</span></div>
+<div id="vkLoad" class="overlay hide" style="z-index:75"><div><div class="wave">🎙</div><div class="big" id="vkTitle"></div><div style="margin-top:10px;color:#c9d1de;font-size:17px" id="vkSub"></div></div></div>
 <div id="overlay" class="overlay hide"><div><div class="wave">🎙</div><div class="big" id="ovTitle">Đang nghe…</div><div class="livetxt" id="ovLive"></div><div style="margin-top:10px;color:#c9d1de">Thả tay ra để chốt</div></div></div>
 <div id="modalRoot"></div>
 
@@ -1050,12 +1051,114 @@ var V={rec:null,running:false,wantWake:false,ptt:null,base:0,len:0,lastFinal:tru
   pttEnd:function(){ var self=this, p=this.ptt; if(!p||p.released) return; p.released=true; setTimeout(function(){ self.finishPtt(); },700); },
   finishPtt:function(){ var p=this.ptt; if(!p) return; this.ptt=null; this.base=this.len; this.prefix=''; if(!this.wantWake) this.stop(); p.onDone(p.text); }
 };
+/* =====================================================================
+   VOSK — nhận diện giọng nói OFFLINE ngay trên máy (cho iPad đời cũ không có
+   nhận diện của trình duyệt). Chỉ nghe các từ trong menu (khóa vốn từ) nên
+   chính xác hơn trong quán ồn. Gói tiếng Việt ~33MB, tải 1 lần rồi lưu trong máy.
+   ===================================================================== */
+var VOSK_JS='vosk.js', VOSK_MODEL='vosk-vn-small-0.3.tar.gz';
+var VK={engine:'vosk',ok:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.WebAssembly&&window.Worker),
+  wantWake:false,blocked:false,loading:false,ready:false,ptt:null,model:null,rec:null,node:null,src:null,stream:null,loadP:null,err:'',
+  grammar:function(){
+    var set={}; Object.keys(VOC.P).forEach(function(k){ k.split(' ').forEach(function(w){ if(w && !/^\d+$/.test(w)) set[w]=1; }); });
+    Object.keys(NUMW).concat(['mươi','mười','lăm','linh','trăm']).forEach(function(w){ set[w]=1; });
+    var wakes=String(S.settings.wakeWord||'').split(',').map(norm).filter(Boolean);
+    wakes.forEach(function(p){ p.split(' ').forEach(function(w){ set[w]=1; }); });
+    // câu mẫu để Vosk học cách ghép từ (mô hình 2-gram): "bếp ơi hai cá rô chả tròn", "thêm chả dài", "một lon coca"...
+    var ph={}, add=function(x){ x=norm(x); if(x && x.indexOf(' ')>0) ph[x]=1; };
+    Object.keys(VOC.P).forEach(function(k){ if(!/\d/.test(k)) add(k); });
+    var dishes=[], tops=[], drinks=[];
+    S.menu.bowls.forEach(function(b){ dishes.push(norm(b.short||autoShort(b.name))); (b.aliases||[]).forEach(function(a){ if(!/\d/.test(a)) dishes.push(norm(a)); }); });
+    S.menu.toppings.forEach(function(t){ tops.push(norm(t.name)); });
+    S.menu.drinks.forEach(function(d){ drinks.push(norm(d.name)); (d.variants||[]).forEach(function(v){ drinks.push(norm(v)); }); });
+    var nums=['một','hai','ba','bốn','năm'];
+    dishes.forEach(function(d,i){
+      wakes.forEach(function(w){ add(w+' '+nums[i%5]+' '+d); add(w+' '+nums[(i+1)%5]+' bát '+d); });
+      add('bánh đa '+d); add(d+' bánh đa'); add(d+' không hành'); add(d+' mang đi');
+      ['chả tròn','chả dài','chả'].forEach(function(t){ add(d+' '+t); });
+    });
+    tops.forEach(function(t){ add('thêm '+t); add('không '+t); add('ít '+t); add('nhiều '+t); add('bỏ '+t); add('một bát '+t); });
+    drinks.forEach(function(d,i){ add(nums[i%5]+' '+d); add('thêm '+nums[(i+2)%5]+' '+d); });
+    ['sửa thành','hủy đơn','mang đi','mang về','gói về','ăn tại quán'].forEach(add);
+    return ['[unk]'].concat(Object.keys(set)).concat(Object.keys(ph));
+  },
+  load:function(){
+    var self=this; if(this.loadP) return this.loadP;
+    this.loading=true; micUI(); vkProgress(true,'Đang tải bộ nhận diện giọng nói…','Lần đầu tải khoảng 40MB, các lần sau mở ngay.');
+    this.loadP=new Promise(function(res,rej){
+      function go(){
+        vkProgress(true,'Đang nạp gói tiếng Việt…','iPad đời cũ có thể mất 20–60 giây. Đừng tắt màn hình.');
+        var t0=Date.now();
+        Vosk.createModel(VOSK_MODEL).then(function(m){ self.model=m; self.loadMs=Date.now()-t0; res(m); }).catch(rej);
+      }
+      if(window.Vosk) go(); else { var sc=document.createElement('script'); sc.src=VOSK_JS; sc.onload=go; sc.onerror=function(){ rej(new Error('Không tải được vosk.js')); }; document.head.appendChild(sc); }
+    }).then(function(){ return self.makeRec(); }).then(function(){ self.loading=false; self.ready=true; vkProgress(false); micUI(); },
+      function(e){ self.loading=false; self.loadP=null; self.err=String(e&&e.message||e); vkProgress(false); micUI(); toast('Không nạp được bộ nhận diện: '+self.err,'err'); throw e; });
+    return this.loadP;
+  },
+  makeRec:function(){
+    var self=this, a=ac();
+    if(this.rec){ try{ this.rec.remove(); }catch(e){} }
+    this.rec=new this.model.KaldiRecognizer(a?a.sampleRate:48000, JSON.stringify(this.grammar()));
+    this.rec.on('partialresult',function(m){ var t=clean(m.result&&m.result.partial); if(self.ptt){ if(!self.ptt.flushing) $('#ovLive').textContent=(self.ptt.acc+' '+t).trim(); } else if(t) liveHeard(t); });
+    this.rec.on('result',function(m){ self.onResult(clean(m.result&&m.result.text)); });
+    function clean(x){ return String(x||'').replace(/\[unk\]/g,' ').replace(/\s+/g,' ').trim(); }
+    return this.openMic();
+  },
+  openMic:function(){
+    var self=this; if(this.stream) { this.connect(); return Promise.resolve(); }
+    function gum(c){ return navigator.mediaDevices.getUserMedia(c); }
+    return gum({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}).catch(function(){ return gum({audio:true}); }).then(function(st){
+      self.stream=st; var a=ac();
+      self.src=a.createMediaStreamSource(st);
+      self.node=a.createScriptProcessor(4096,1,1);
+      self.mute=a.createGain(); self.mute.gain.value=0;
+      self.node.onaudioprocess=function(e){ if(!self.rec || (!self.wantWake && !self.ptt)) return; try{ self.rec.acceptWaveform(e.inputBuffer); }catch(err){} };
+      self.connect();
+    },function(e){ self.blocked=true; micUI(); toast('Không mở được micro — vào Cài đặt → Safari → Micro, chọn Cho phép','err'); throw e; });
+  },
+  connect:function(){ try{ this.src.connect(this.node); this.node.connect(this.mute); this.mute.connect(ac().destination); }catch(e){} },
+  onResult:function(t){
+    var p=this.ptt;
+    if(p){
+      if(p.flushing){ p.flushing=false; return; }        // kết quả cũ trước khi bấm nút → bỏ
+      if(t) p.acc=(p.acc+' '+t).trim();
+      if(p.released){ this.finish(); }
+      return;
+    }
+    if(t && this.wantWake) handleUtterance(t,'wake');
+  },
+  wake:function(on){
+    var self=this; this.wantWake=on; micUI();
+    if(on){ this.blocked=false; this.load().catch(function(){}); }
+  },
+  pttStart:function(onDone){
+    var self=this;
+    this.ptt={onDone:onDone,acc:'',released:false,flushing:false};
+    if(this.ready){ this.ptt.flushing=true; try{ this.rec.retrieveFinalResult(); }catch(e){ this.ptt.flushing=false; } }
+    else this.load().catch(function(){ if(self.ptt){ var p=self.ptt; self.ptt=null; overlay(false); } });
+  },
+  pttEnd:function(){
+    var self=this, p=this.ptt; if(!p||p.released) return; p.released=true;
+    if(!this.ready){ this.ptt=null; overlay(false); toast('Bộ nhận diện đang nạp, đợi chút rồi thử lại'); return; }
+    setTimeout(function(){ if(self.ptt!==p) return; try{ self.rec.retrieveFinalResult(); }catch(e){ self.finish(); } },450); // đợi đoạn âm thanh cuối
+    p.safety=setTimeout(function(){ if(self.ptt===p) self.finish(); },3000);
+  },
+  finish:function(){ var p=this.ptt; if(!p) return; clearTimeout(p.safety); this.ptt=null; p.onDone(p.acc?[p.acc]:[]); },
+  regrammar:function(){ if(this.ready && this.model){ this.makeRec(); } }
+};
+function vkProgress(on,title,sub){
+  var el=$('#vkLoad'); if(!el) return; el.classList.toggle('hide',!on);
+  if(on){ $('#vkTitle').textContent=title||''; $('#vkSub').textContent=sub||''; }
+}
+function voiceEngine(){ var e=S.settings.voiceEngine||'auto'; if(e==='auto') return SR?'browser':'vosk'; return e; }
 function micUI(){
   var c=$('#micchip'), tx=$('#micText'); if(!c) return;
   c.className='micchip';
-  if(!V.ok){ c.classList.add('warn'); tx.textContent='Máy này không nghe được giọng nói (cần iPadOS 14.5+)'; return; }
+  if(!V.ok){ c.classList.add('warn'); tx.textContent='Máy này không nghe được giọng nói'; return; }
+  if(V.loading){ c.classList.add('warn'); tx.textContent='Đang nạp bộ nhận diện…'; return; }
   if(V.blocked){ c.classList.add('warn'); tx.textContent='Micro bị chặn · bấm để thử lại'; return; }
-  if(V.wantWake){ c.classList.add('live'); tx.innerHTML='Đang nghe · gọi '+wakeShow().map(function(w){return '“'+esc(w)+'”';}).join(' / '); }
+  if(V.wantWake){ c.classList.add('live'); tx.innerHTML='Đang nghe'+(V.engine==='vosk'?' (offline)':'')+' · gọi '+wakeShow().map(function(w){return '“'+esc(w)+'”';}).join(' / '); }
   else tx.textContent='Mic tắt · bấm để bật';
 }
 
@@ -1392,6 +1495,7 @@ function admSettings(){
   '<div class="hint">Đơn tự ẩn được tính là đã thanh toán và có nhãn “tự ẩn” trong báo cáo. Từ kích hoạt nên dài 2–3 âm tiết, ít gặp trong câu nói thường.</div></form>'+
   '<div style="margin-top:14px"><label class="switch"><input type="checkbox" data-act="demoToggle" '+(st.demo?'checked':'')+'> Chế độ demo — đơn mới không tính vào báo cáo</label></div></div>'+
   '<div class="panel"><h3>Chi nhánh</h3><div class="hint" style="margin-bottom:8px">Mỗi máy bán hàng thuộc một chi nhánh; đơn bán ra được ghi theo chi nhánh đó. Bấm địa chỉ trên cùng để chọn chi nhánh khi xem báo cáo.</div><form id="brForm"><table class="t menu-t"><tr><th>Tên</th><th>Địa chỉ</th><th style="text-align:center">Máy này</th><th></th></tr>'+S.branches.map(function(b){ return '<tr data-bid="'+b.id+'"><td style="width:24%"><input data-bf="name" value="'+esc(b.name)+'"></td><td><input data-bf="address" value="'+esc(b.address)+'" placeholder="Số nhà, đường, phường…"></td><td style="text-align:center"><input type="radio" name="devbr" value="'+b.id+'" '+(b.id===S.deviceBranch?'checked':'')+' style="width:20px;height:20px"></td><td>'+(S.branches.length>1?'<button type="button" class="xbtn" data-delbr="'+b.id+'">✕</button>':'')+'</td></tr>'; }).join('')+'</table><div class="row" style="justify-content:flex-start"><button type="button" class="btn sm" data-act="addBranch">+ Thêm chi nhánh</button><button class="btn pri">Lưu chi nhánh</button></div></form></div>'+
+  '<div class="panel"><h3>Nhận diện giọng nói</h3><div class="formrow"><label>Bộ nhận diện trên máy này<select class="inp" id="engSel" style="width:330px"><option value="auto"'+((st.voiceEngine||'auto')==='auto'?' selected':'')+'>Tự động (đang dùng: '+(voiceEngine()==='vosk'?'Vosk offline':'của trình duyệt')+')</option><option value="browser"'+(st.voiceEngine==='browser'?' selected':'')+(SR?'':' disabled')+'>Của trình duyệt (cần mạng, iPadOS 14.5+)</option><option value="vosk"'+(st.voiceEngine==='vosk'?' selected':'')+'>Vosk offline (chạy trên máy, máy cũ dùng được)</option></select></label></div><div class="hint">Vosk chỉ nghe các từ có trong menu nên ít nghe nhầm trong quán ồn. Lần đầu tải khoảng 40MB.'+(V.engine==='vosk'&&V.loadMs?' Lần nạp gần nhất: '+Math.round(V.loadMs/1000)+' giây.':'')+'</div></div>'+
   '<div class="panel"><h3>Bảo mật</h3><button class="btn" data-act="changePw">Đổi mật khẩu Quản trị</button></div>'+
   '<div class="panel"><h3>Sao lưu / khôi phục</h3><div class="row" style="justify-content:flex-start;margin-top:0"><button class="btn" data-act="backup">Tải file sao lưu (.json)</button><button class="btn" data-act="backupCopy">Sao chép dữ liệu</button><label class="btn" style="display:inline-block">Khôi phục từ file<input type="file" accept=".json,application/json" id="restoreFile" class="hide"></label></div><div class="hint" style="margin-top:6px">Khôi phục sẽ thay toàn bộ dữ liệu hiện tại. Bản chính thức sẽ sao lưu tự động qua Firebase.</div></div>'+
   '<div class="panel"><h3>Dữ liệu mẫu để xem thử báo cáo</h3><div class="row" style="justify-content:flex-start;margin-top:0"><button class="btn ok" data-act="genSample">Nạp dữ liệu mẫu 45 ngày</button>'+(sampleN?'<button class="btn" data-act="delSample">Xóa dữ liệu mẫu ('+sampleN+' đơn)</button>':'')+'<button class="btn dan" data-act="factory">Xóa sạch toàn bộ</button></div><div class="hint" style="margin-top:6px">Dữ liệu mẫu do máy sinh ngẫu nhiên, không phải số liệu thật của quán.</div></div>'+
@@ -1499,7 +1603,7 @@ document.addEventListener('click',function(e){
     case 'demoToggle': S.settings.demo=a.checked; DB.save(); renderAdmin(); toast(S.settings.demo?'Đã bật chế độ demo':'Đã tắt chế độ demo'); break;
     case 'exportCsv': exportCsv(); break;
     case 'restoreAll': S.orders.forEach(function(o){ delete o.deletedAt; }); DB.save(); renderAdmin(); toast('Đã khôi phục tất cả'); break;
-    case 'saveMenu': var m=readMenuFromDOM(); if(!m.bowls.length){ toast('Menu cần ít nhất 1 món','err'); break; } S.menu=m; DB.save(); var n=buildVocab(); renderAdmin(); toast('Đã lưu menu · nạp lại '+n+' cụm từ nhận diện'); break;
+    case 'saveMenu': var m=readMenuFromDOM(); if(!m.bowls.length){ toast('Menu cần ít nhất 1 món','err'); break; } S.menu=m; DB.save(); var n=buildVocab(); if(V.regrammar) V.regrammar(); renderAdmin(); toast('Đã lưu menu · nạp lại '+n+' cụm từ nhận diện'); break;
     case 'changePw': changePwDialog(false); break;
     case 'backup': download('sao-luu-hung-nhan-85-'+ymd(Date.now())+'.json',JSON.stringify(S),'application/json'); break;
     case 'backupCopy': download('sao-luu-hung-nhan-85-'+ymd(Date.now())+'.json',JSON.stringify(S),'application/json'); break;
@@ -1528,6 +1632,7 @@ document.addEventListener('submit',function(e){
 });
 document.addEventListener('change',function(e){
   if(e.target.id==='spMode') specialFormSync();
+  if(e.target.id==='engSel'){ S.settings.voiceEngine=e.target.value; DB.save(); toast('Đã đổi bộ nhận diện — đang tải lại app…'); setTimeout(function(){ location.reload(); },900); }
   if(e.target.id==='restoreFile'){ var file=e.target.files[0]; if(!file) return; var r=new FileReader(); r.onload=function(){ try{ var d=JSON.parse(r.result); if(!d.menu||!d.orders) throw 0; askPassword('Khôi phục dữ liệu từ file?','Toàn bộ dữ liệu hiện tại sẽ bị thay bằng nội dung file ('+d.orders.length+' đơn).',function(){ try{ localStorage.setItem(KEY,JSON.stringify(d)); }catch(er){} DB.load(); buildVocab(); renderAdmin(); toast('Đã khôi phục'); }); }catch(err){ toast('File không hợp lệ','err'); } }; r.readAsText(file); }
 });
 
@@ -1541,6 +1646,7 @@ document.addEventListener('change',function(e){
   window.addEventListener('resize',function(){ if($('#sales').classList.contains('on')) renderSales(); });
 })();
 DB.load(); buildVocab();
+if(voiceEngine()==='vosk') V=VK;
 var __kiosk=null;
 $('#startNote').innerHTML=(S.pw.hash?'':'Mật khẩu Quản trị bản demo: <b>1234</b> (đổi ngay ở lần đăng nhập đầu) · ')+(V.ok?'Trình duyệt có nhận diện giọng nói':'Trình duyệt này không có nhận diện giọng nói — vẫn dùng được bằng ô gõ lệnh');
 if(FB.on) FB.boot(); else afterReady();
