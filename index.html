@@ -2,6 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1133,7 +1134,21 @@ function doReplace(o,L,R){
 /* ---- điểm vào chung cho mọi câu nói ---- */
 /* Trình duyệt hay nghe "thập cẩm" thành "10 cẩm", "tập cẩm", "thấp cẩm"... → sửa lại trước khi phân tích */
 var TC_RE=/(^| )(10|mười|muoi|thập|thap|tập|tap|thấp|thạp|thắp|thâp|tháp)( |-)(cẩm|cam|cẩn|cảm|cấm|cẫm|cầm|kẩm|cẩm\.)(?= |$)/gi;
-function fixThapCam(s){ return s.replace(TC_RE,'$1thập cẩm'); }
+var TC_A={'10':1,'muoi':1,'thap':1,'tap':1,'tham':1,'thac':1,'that':1,'thaps':1},
+    TC_B={'cam':1,'can':1,'kam':1,'kham':1,'cang':1,'cap':1,'gam':1,'cammm':1};
+function fixThapCam(s){
+  s=s.replace(TC_RE,'$1thập cẩm');
+  // so khớp bỏ dấu: "10 câm", "mười khẩm", "10cẩm", "thâp cam"...
+  var w=s.split(' '), out=[];
+  for(var i=0;i<w.length;i++){
+    var a=stripD(w[i]).toLowerCase(), b=w[i+1]!=null?stripD(w[i+1]).toLowerCase():'';
+    var glued=a.match(/^(10|muoi|thap|tap)(cam|can|kam|kham)$/);
+    if(glued){ out.push('thập','cẩm'); continue; }
+    if(TC_A[a] && TC_B[b]){ out.push('thập','cẩm'); i++; continue; }
+    out.push(w[i]);
+  }
+  return out.join(' ');
+}
 function prep(raw){ var s=fixThapCam(norm(String(raw||'').replace(/(\d)[.,](?=\d{3}(?!\d))/g,'$1').replace(/(\d)\s*(đ|vnđ|vnd)(?![a-zà-ỹ])/gi,'$1 đồng'))); if(VI_RE.test(s)) s=applyFix(s); return s; }
 function lev(a,b){
   if(Math.abs(a.length-b.length)>1) return 2; var d=[],i,j;
@@ -2187,7 +2202,8 @@ document.addEventListener('change',function(e){
 DB.load(); buildVocab();
 if(voiceEngine()==='vosk') V=VK;
 var __kiosk=null;
-$('#startNote').innerHTML=(S.pw.hash?'':'Mật khẩu Quản trị bản demo: <b>1234</b> (đổi ngay ở lần đăng nhập đầu) · ')+(V.ok?'Trình duyệt có nhận diện giọng nói':'Trình duyệt này không có nhận diện giọng nói — vẫn dùng được bằng ô gõ lệnh');
+var APP_VER='01/11 22:40';
+$('#startNote').innerHTML='Phiên bản '+APP_VER+' · '+(S.pw.hash?'':'Mật khẩu Quản trị bản demo: <b>1234</b> (đổi ngay ở lần đăng nhập đầu) · ')+(V.ok?'Trình duyệt có nhận diện giọng nói':'Trình duyệt này không có nhận diện giọng nói — vẫn dùng được bằng ô gõ lệnh');
 markPhone();
 if(FB.on) FB.boot(); else afterReady();
 function tick(){ var c=$('#clock'); if(c) c.textContent=hm(Date.now()); }
