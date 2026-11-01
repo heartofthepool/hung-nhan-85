@@ -664,7 +664,7 @@ document.addEventListener('visibilitychange',function(){
     if(V.closeMic) V.closeMic();
     if(AC && AC.suspend) try{ AC.suspend(); }catch(e){}
   } else {
-    if(bgMic && $('#sales').classList.contains('on')){ bgMic=false; autoMic(); }
+    bgMic=false; if($('#sales').classList.contains('on') && !isPhone()) autoMic(); // iPad: quay lại app luôn nghe; điện thoại: vẫn tắt
   }
 });
 window.addEventListener('pagehide',function(){ if(V.wantWake) V.wake(false); if(V.closeMic) V.closeMic(); });
@@ -672,6 +672,7 @@ function markPhone(){ document.body.classList.toggle('phone',isPhone()); }
 window.addEventListener('resize',markPhone);
 function autoMic(){
   if(!V.ok) return;
+  if(isPhone()){ micUI(); return; } // điện thoại: mặc định tắt, bấm vào ô 'Mic tắt' mới nghe
   V.quiet=true; setTimeout(function(){ V.quiet=false; },4000);
   try{ ac(); V.wake(true); }catch(e){}
   function first(){
@@ -1338,7 +1339,7 @@ function micUI(){
   if(V.loading){ c.classList.add('warn'); tx.textContent='Đang nạp bộ nhận diện…'; return; }
   if(V.blocked){ c.classList.add('warn'); tx.textContent='Micro bị chặn · bấm để thử lại'; return; }
   if(V.wantWake){ c.classList.add('live'); tx.textContent='Đang nghe'; c.title='Gọi: '+wakeShow().join(' / '); }
-  else tx.textContent='Mic tắt · bấm để bật';
+  else tx.textContent=isPhone()?'Bấm để nghe':'Mic tắt · bấm để bật';
 }
 
 /* ---------------- feedback ---------------- */
@@ -1795,7 +1796,7 @@ function enterSales(bid){
   var b=branchById(bid); $('#salesBr').textContent=b?(b.name+': '+(b.address||'')):'';
   show('sales'); renderCause='switch'; renderSales();
 }
-function goSales(bid){ enterSales(bid); ac(); if(V.ok && !V.wantWake && !V.blocked) V.wake(true); }
+function goSales(bid){ enterSales(bid); ac(); if(V.ok && !V.wantWake && !V.blocked && !isPhone()) V.wake(true); }
 /* Điện thoại: đổi cơ sở ngay, không cần mật khẩu (để chủ quán theo dõi nhiều nơi).
    iPad / màn hình lớn (máy đặt cố định ở quán): phải nhập mật khẩu Quản trị. */
 function isPhone(){ return Math.min(screen.width,screen.height)<600 || (window.matchMedia && matchMedia('(max-width:760px)').matches); }
