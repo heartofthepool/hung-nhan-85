@@ -405,7 +405,16 @@ function defaults(){
 
 /* ---------------- cấu hình Firebase ----------------
    Dán đoạn firebaseConfig của project vào đây. Để null = chạy một mình trên máy (không đồng bộ). */
-var FIREBASE_CONFIG = window.FIREBASE_CONFIG || null;
+var FIREBASE_CONFIG = window.FIREBASE_CONFIG || {
+  apiKey: "AIzaSyAGypcL6s0PLf8Tw9_V1CtANXWbfSb8ddg",
+  authDomain: "hungnhan85-bd9ca.firebaseapp.com",
+  projectId: "hungnhan85-bd9ca",
+  storageBucket: "hungnhan85-bd9ca.firebasestorage.app",
+  messagingSenderId: "3193921379",
+  appId: "1:3193921379:web:ddfd4749db2787997ffd56"
+};
+/* Trang xem trước trên claude.ai không gọi được Firebase → chạy một mình */
+if(/claudeusercontent|claude\.ai|claude\.site/.test(location.hostname) && !window.FIREBASE_CONFIG) FIREBASE_CONFIG=null;
 
 /* ---------------- storage layer ---------------- */
 var KEY_LOCAL='caudoanh_order_v1', KEY_FB='hn85_fb_cache_v1';
