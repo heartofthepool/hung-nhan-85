@@ -379,6 +379,17 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
 .col.done .detail td:nth-child(2){flex:1;min-width:0}
 .col.done .detail td.dp{width:100%;text-align:left;padding-left:36px;color:#555;font-size:12px}
 .col.done .detail .dsum{flex-wrap:wrap}
+/* === Tông màu theo loại đơn: nền thẻ nhạt, nút Sửa trung tính, nút Xong đậm (giống thanh Đoàn) === */
+#sales .card.di{background:#e8effd;box-shadow:inset 0 0 0 2px #93b4f5,0 2px 0 rgba(0,0,0,.25)}
+#sales .card.di .btn-pen{background:#bcd0fb!important;color:#1e3a8a!important}
+#sales .card.di .btn-ok{background:#2f5fd0!important;color:#fff!important}
+#sales .card.tk{background:#e3f6ea;box-shadow:inset 0 0 0 2px #86d3a3,0 2px 0 rgba(0,0,0,.25)}
+#sales .card.tk .btn-pen{background:#b4e6c6!important;color:#14532d!important}
+#sales .card.tk .btn-ok{background:#1f8f4e!important;color:#fff!important}
+#sales .card.di .ptag,#sales .card.di .detail .dsum b{color:#1e40af}
+#sales .card.tk .ptag,#sales .card.tk .detail .dsum b{color:#166534}
+#sales .card.addon{box-shadow:inset 0 0 0 3px var(--org),0 2px 0 rgba(0,0,0,.25)}
+#sales .card .btn-pen:active,#sales .card .btn-pen.hold{filter:brightness(.92)}
 </style>
 </head>
 <body>
