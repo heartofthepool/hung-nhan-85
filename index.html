@@ -1089,9 +1089,16 @@ var VK={engine:'vosk',ok:!!(navigator.mediaDevices&&navigator.mediaDevices.getUs
       function go(){
         vkProgress(true,'Đang nạp gói tiếng Việt…','iPad đời cũ có thể mất 20–60 giây. Đừng tắt màn hình.');
         var t0=Date.now();
-        Vosk.createModel(VOSK_MODEL).then(function(m){ self.model=m; self.loadMs=Date.now()-t0; res(m); }).catch(rej);
+        var un=patchET(), pm; try{ pm=Vosk.createModel(VOSK_MODEL); } finally{ un(); }
+        pm.then(function(m){ self.model=m; self.loadMs=Date.now()-t0; res(m); }).catch(rej);
       }
-      if(window.Vosk) go(); else { var sc=document.createElement('script'); sc.src=VOSK_JS; sc.onload=go; sc.onerror=function(){ rej(new Error('Không tải được vosk.js')); }; document.head.appendChild(sc); }
+      if(window.Vosk){ go(); return; }
+      // iOS < 14: EventTarget không tạo được bằng "new"/"extends" → thay tạm bằng bản viết tay trong lúc nạp vosk.js
+      var sc=document.createElement('script'); sc.src=VOSK_JS;
+      var unpatch=patchET();
+      sc.onload=function(){ unpatch(); go(); };
+      sc.onerror=function(){ unpatch(); rej(new Error('Không tải được vosk.js')); };
+      document.head.appendChild(sc);
     }).then(function(){ return self.makeRec(); }).then(function(){ self.loading=false; self.ready=true; vkProgress(false); micUI(); },
       function(e){ self.loading=false; self.loadP=null; self.err=String(e&&e.message||e); vkProgress(false); micUI(); toast('Không nạp được bộ nhận diện: '+self.err,'err'); throw e; });
     return this.loadP;
@@ -1099,7 +1106,7 @@ var VK={engine:'vosk',ok:!!(navigator.mediaDevices&&navigator.mediaDevices.getUs
   makeRec:function(){
     var self=this, a=ac();
     if(this.rec){ try{ this.rec.remove(); }catch(e){} }
-    this.rec=new this.model.KaldiRecognizer(a?a.sampleRate:48000, JSON.stringify(this.grammar()));
+    var unpatch=patchET(); try{ this.rec=new this.model.KaldiRecognizer(a?a.sampleRate:48000, JSON.stringify(this.grammar())); } finally{ unpatch(); }
     this.rec.on('partialresult',function(m){ var t=clean(m.result&&m.result.partial); if(self.ptt){ if(!self.ptt.flushing) $('#ovLive').textContent=(self.ptt.acc+' '+t).trim(); } else if(t) liveHeard(t); });
     this.rec.on('result',function(m){ self.onResult(clean(m.result&&m.result.text)); });
     function clean(x){ return String(x||'').replace(/\[unk\]/g,' ').replace(/\s+/g,' ').trim(); }
@@ -1146,6 +1153,19 @@ var VK={engine:'vosk',ok:!!(navigator.mediaDevices&&navigator.mediaDevices.getUs
   },
   finish:function(){ var p=this.ptt; if(!p) return; clearTimeout(p.safety); this.ptt=null; p.onDone(p.acc?[p.acc]:[]); },
   regrammar:function(){ if(this.ready && this.model){ this.makeRec(); } }
+};
+/* iOS < 14 không cho "class X extends EventTarget" → tạm thay EventTarget bằng bản viết tay trong lúc Vosk tạo đối tượng */
+function patchET(){
+  var N=window.EventTarget; try{ new N(); return function(){}; }catch(e){}
+  window.EventTarget=EventTargetLite; return function(){ window.EventTarget=N; };
+}
+function EventTargetLite(){ this.__l={}; }
+EventTargetLite.prototype.addEventListener=function(t,f){ if(!f) return; (this.__l[t]=this.__l[t]||[]).push(f); };
+EventTargetLite.prototype.removeEventListener=function(t,f){ var a=this.__l[t]; if(!a) return; var i=a.indexOf(f); if(i>=0) a.splice(i,1); };
+EventTargetLite.prototype.dispatchEvent=function(ev){
+  var self=this, a=(this.__l[ev.type]||[]).slice();
+  for(var i=0;i<a.length;i++){ var f=a[i]; try{ if(typeof f==='function') f.call(self,ev); else if(f && f.handleEvent) f.handleEvent(ev); }catch(er){ setTimeout(function(){ throw er; }); } }
+  return !ev.defaultPrevented;
 };
 function vkProgress(on,title,sub){
   var el=$('#vkLoad'); if(!el) return; el.classList.toggle('hide',!on);
