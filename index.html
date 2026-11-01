@@ -41,6 +41,17 @@ input,select,textarea{font:inherit;color:inherit}
 .syncchip{font-size:13px;font-weight:700;padding:6px 11px;border-radius:99px}
 .syncchip.ok{background:#173a26;color:#6ee7a1}
 .syncchip.off{background:#4a3410;color:#ffcf7a}
+.vkbar{width:min(520px,80vw);height:14px;border-radius:99px;background:#2a3341;margin:18px auto 0;overflow:hidden;position:relative}
+.vkbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#f2ad4d,#e48d22);border-radius:99px;transition:width .3s}
+.vkbar.indet i{width:35%!important;position:absolute;left:0;animation:indet 1.4s ease-in-out infinite}
+@keyframes indet{0%{left:-35%}100%{left:100%}}
+.vksteps{list-style:none;padding:0;margin:16px auto 0;display:inline-block;text-align:left;font-size:16px;color:#7b8597}
+.vksteps li{padding:3px 0}
+.vksteps li:before{content:"○";display:inline-block;width:26px;color:#5b6472}
+.vksteps li.on{color:#fff;font-weight:700}
+.vksteps li.on:before{content:"●";color:var(--org)}
+.vksteps li.done{color:#6ee7a1}
+.vksteps li.done:before{content:"✓";color:#6ee7a1}
 .tapstart{position:fixed;top:0;right:0;bottom:0;left:0;z-index:70;background:rgba(8,10,14,.86);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#fff;text-align:center;cursor:pointer}
 .tapstart b{font-size:34px}
 .tapstart span{color:#aab3c2;font-size:17px}
@@ -314,7 +325,10 @@ table.ov tr.sub td:first-child{padding-left:28px;color:#b8c0cc}
   </div>
 </div>
 <div id="tapStart" class="tapstart hide" data-act="tapStart"><div class="wave" style="width:110px;height:110px;border-radius:50%;background:var(--org);display:flex;align-items:center;justify-content:center;font-size:48px">🎙</div><b>Chạm để bắt đầu bán hàng</b><span>iPad cần một lần chạm để bật micro</span></div>
-<div id="vkLoad" class="overlay hide" style="z-index:75"><div><div class="wave">🎙</div><div class="big" id="vkTitle"></div><div style="margin-top:10px;color:#c9d1de;font-size:17px" id="vkSub"></div><div id="vkTime" style="margin-top:14px;font-size:40px;font-weight:800;color:#ffd27a;font-variant-numeric:tabular-nums">0s</div><div id="vkSlow" class="hide" style="margin-top:12px;color:#ffb4b4;font-size:15px;max-width:520px">Lâu hơn bình thường. Máy có thể không đủ RAM để chạy bộ nhận diện offline.<br><button class="btn" data-act="vkSkip" style="margin-top:12px">Bỏ qua, bán không dùng giọng nói</button></div></div></div>
+<div id="vkLoad" class="overlay hide" style="z-index:75"><div><div class="wave">🎙</div><div class="big" id="vkTitle"></div><div style="margin-top:10px;color:#c9d1de;font-size:17px" id="vkSub"></div><div class="vkbar" id="vkBar"><i id="vkFill"></i></div>
+<div id="vkInfo" style="margin-top:8px;color:#ffd27a;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums"></div>
+<ol class="vksteps" id="vkSteps"><li data-s="dl">Tải gói tiếng Việt</li><li data-s="load">Giải nén &amp; nạp vào bộ nhớ</li><li data-s="mic">Mở micro</li></ol>
+<div id="vkTime" style="margin-top:6px;font-size:15px;color:#9aa4b4;font-variant-numeric:tabular-nums">0s</div><div id="vkSlow" class="hide" style="margin-top:12px;color:#ffb4b4;font-size:15px;max-width:520px">Lâu hơn bình thường. Máy có thể không đủ RAM để chạy bộ nhận diện offline.<br><button class="btn" data-act="vkSkip" style="margin-top:12px">Bỏ qua, bán không dùng giọng nói</button></div></div></div>
 <div id="overlay" class="overlay hide"><div><div class="wave">🎙</div><div class="big" id="ovTitle">Đang nghe…</div><div class="livetxt" id="ovLive"></div><div style="margin-top:10px;color:#c9d1de">Thả tay ra để chốt</div></div></div>
 <div id="modalRoot"></div>
 
@@ -1084,14 +1098,19 @@ var VK={engine:'vosk',ok:!!(navigator.mediaDevices&&navigator.mediaDevices.getUs
   },
   load:function(){
     var self=this; if(this.loadP) return this.loadP;
-    this.loading=true; micUI(); vkProgress(true,'Đang tải bộ nhận diện giọng nói…','Lần đầu tải khoảng 40MB, các lần sau mở ngay.');
+    this.loading=true; micUI(); vkProgress(true,'Đang chuẩn bị nhận diện giọng nói','Chỉ lần đầu phải tải, các lần sau nạp từ bộ nhớ máy.');
+    var modelUrl=S.settings.voskFull?VOSK_MODEL_FULL:VOSK_MODEL;
     this.loadP=new Promise(function(res,rej){
       function go(){
-        vkProgress(true,'Đang nạp gói tiếng Việt…','iPad đời cũ có thể mất 20–60 giây. Đừng tắt màn hình.');
+        vkPrefetch(modelUrl).then(function(){
+        vkProgress(true,'Đang nạp gói tiếng Việt','iPad đời cũ có thể mất 20–60 giây. Cứ để máy cắm sạc, đừng tắt màn hình.');
+        vkStep('load','Đang giải nén & nạp…',null);
         var t0=Date.now();
-        var un=patchET(), pm; try{ pm=Vosk.createModel(S.settings.voskFull?VOSK_MODEL_FULL:VOSK_MODEL); } finally{ un(); }
-        pm.then(function(m){ self.model=m; self.loadMs=Date.now()-t0; res(m); }).catch(rej);
+        var un=patchET(), pm; try{ pm=Vosk.createModel(modelUrl); } finally{ un(); }
+        pm.then(function(m){ self.model=m; self.loadMs=Date.now()-t0; try{ localStorage.setItem('vkCached',modelUrl); }catch(e){} vkStep('mic','Đang mở micro…',100); res(m); }).catch(rej);
+        });
       }
+      vkStep('dl','Đang tải thư viện…',null);
       if(window.Vosk){ go(); return; }
       // iOS < 14: EventTarget không tạo được bằng "new"/"extends" → thay tạm bằng bản viết tay trong lúc nạp vosk.js
       var sc=document.createElement('script'); sc.src=VOSK_JS;
@@ -1168,6 +1187,23 @@ EventTargetLite.prototype.dispatchEvent=function(ev){
   return !ev.defaultPrevented;
 };
 var vkT=null, vkT0=0;
+function vkStep(name,info,pct){
+  var order=['dl','load','mic'], k=order.indexOf(name);
+  Array.prototype.forEach.call(document.querySelectorAll('#vkSteps li'),function(li){ var i=order.indexOf(li.getAttribute('data-s')); li.className=i<k?'done':(i===k?'on':''); });
+  var bar=$('#vkBar'); bar.classList.toggle('indet',pct==null); if(pct!=null) $('#vkFill').style.width=Math.max(2,Math.min(100,pct))+'%';
+  $('#vkInfo').textContent=info||'';
+}
+function mb(n){ return (n/1048576).toFixed(1); }
+/* Tải trước gói tiếng Việt bằng XHR để có % tiến trình; Vosk sau đó lấy lại từ bộ nhớ đệm trình duyệt */
+function vkPrefetch(url){
+  return new Promise(function(res){
+    try{ if(localStorage.getItem('vkCached')===url){ vkStep('dl','Đã có sẵn trong máy',100); res(); return; } }catch(e){}
+    var x=new XMLHttpRequest(); x.open('GET',url,true); x.responseType='blob';
+    x.onprogress=function(e){ var tot=e.lengthComputable?e.total:0; vkStep('dl',mb(e.loaded)+(tot?' / '+mb(tot):'')+' MB'+(tot?' · '+Math.round(e.loaded/tot*100)+'%':''),tot?e.loaded/tot*100:null); };
+    x.onload=function(){ res(); }; x.onerror=function(){ toast('Lỗi tải gói tiếng Việt — kiểm tra mạng','err'); res(); };
+    x.send();
+  });
+}
 function vkProgress(on,title,sub){
   var el=$('#vkLoad'); if(!el) return; el.classList.toggle('hide',!on);
   if(on){ $('#vkTitle').textContent=title||''; $('#vkSub').textContent=sub||'';
